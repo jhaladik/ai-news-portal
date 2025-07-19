@@ -1,321 +1,343 @@
-// pages/[neighborhood].tsx - Neighborhood news page with client-side data fetching
-import { GetStaticPaths, GetStaticProps } from 'next';
+// pages/[neighborhood].tsx - Enhanced neighborhood news page with AI content
 import Head from 'next/head';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
+import AIContentCard from '../components/AIContentCard';
 
-interface Article {
+interface NewsArticle {
   id: string;
   title: string;
   content: string;
   category: string;
-  neighborhood: {
-    id: string;
-    name: string;
-  };
+  neighborhood_id: string;
   ai_confidence?: number;
+  created_by?: string;
   created_at: number;
   published_at?: number;
+  status: string;
 }
 
-interface NewsPageProps {
-  neighborhood: string;
-  neighborhoodName: string;
+interface NeighborhoodStats {
+  total_articles: number;
+  ai_generated: number;
+  published_today: number;
+  avg_confidence: number;
+  last_update: number;
 }
 
-export default function NewsPage({ neighborhood, neighborhoodName }: NewsPageProps) {
-  const [articles, setArticles] = useState<Article[]>([]);
+export default function NeighborhoodNews() {
+  const router = useRouter();
+  const { neighborhood } = router.query;
+  const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [stats, setStats] = useState<NeighborhoodStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [email, setEmail] = useState('');
-  const [signupStatus, setSignupStatus] = useState('');
+  const [filter, setFilter] = useState<'all' | 'ai' | 'manual' | 'high-confidence'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-  // Load articles from worker
+  // Load neighborhood content
   useEffect(() => {
-    const loadArticles = async () => {
+    if (!neighborhood) return;
+
+    const loadContent = async () => {
+      setLoading(true);
       try {
+        // Load published articles for this neighborhood
         const response = await fetch(
-          `${process.env.CONTENT_LIST_URL}/?neighborhood=${neighborhood}&status=published`
+          `${process.env.CONTENT_LIST_URL}/?neighborhood=${neighborhood}&status=published&limit=50`
         );
-        const data = await response.json();
-        setArticles(data.articles || []);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setArticles(data || []);
+          
+          // Calculate stats
+          const today = new Date().setHours(0, 0, 0, 0);
+          const aiArticles = data.filter((article: NewsArticle) => 
+            article.created_by?.includes('ai') || article.ai_confidence > 0
+          );
+          const todayArticles = data.filter((article: NewsArticle) => 
+            (article.published_at || article.created_at) >= today
+          );
+          const avgConfidence = aiArticles.length > 0 
+            ? aiArticles.reduce((sum: number, article: NewsArticle) => sum + (article.ai_confidence || 0), 0) / aiArticles.length
+            : 0;
+
+          setStats({
+            total_articles: data.length,
+            ai_generated: aiArticles.length,
+            published_today: todayArticles.length,
+            avg_confidence: avgConfidence,
+            last_update: Date.now()
+          });
+        } else {
+          // Fallback demo data
+          const demoArticles: NewsArticle[] = [
+            {
+              id: 'demo-ai-1',
+              title: 'Aktuální počasí a dopravní situace ve Vinohradech',
+              content: 'Dnes ve Vinohradech očekáváme příjemné počasí s teplotami kolem 18°C. Veřejná doprava funguje bez výraznějších problémů, všechny tramvajové linky jezdí podle jízdního řádu. Pro obyvatele čtvrti doporučujeme využít krásného počasí k procházce Riegrovy sady.',
+              category: 'local',
+              neighborhood_id: neighborhood as string,
+              ai_confidence: 0.87,
+              created_by: 'ai-generate-claude',
+              created_at: Date.now() - 3600000,
+              published_at: Date.now() - 3600000,
+              status: 'published'
+            },
+            {
+              id: 'demo-manual-1',
+              title: 'Nové dětské hřiště v Riegrových sadech',
+              content: 'Městská část Praha 2 otevřela nové moderní dětské hřiště v Riegrových sadech. Hřiště nabízí bezpečné herní prvky pro děti všech věkových kategorií a je vybaveno novými lavičkami pro rodiče.',
+              category: 'community',
+              neighborhood_id: neighborhood as string,
+              ai_confidence: 0,
+              created_by: 'admin',
+              created_at: Date.now() - 7200000,
+              published_at: Date.now() - 7200000,
+              status: 'published'
+            }
+          ];
+          setArticles(demoArticles);
+          setStats({
+            total_articles: 2,
+            ai_generated: 1,
+            published_today: 2,
+            avg_confidence: 0.87,
+            last_update: Date.now()
+          });
+        }
       } catch (error) {
-        console.error('Error loading articles:', error);
-        // Use demo data as fallback
-        setArticles([
-          {
-            id: 'demo-1',
-            title: 'Vítejte v AI News Portal!',
-            content: 'Váš hyperlocal news systém je nasazen a funkční. Micro-workers jsou připojené a zpracovávají požadavky.',
-            category: 'local',
-            neighborhood: { id: neighborhood, name: neighborhoodName },
-            ai_confidence: 0.95,
-            created_at: Date.now(),
-            published_at: Date.now()
-          }
-        ]);
+        console.error('Error loading content:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    loadArticles();
-  }, [neighborhood, neighborhoodName]);
+    loadContent();
+  }, [neighborhood]);
 
-  const categories = ['all', 'emergency', 'local', 'business', 'community'];
-  
-  const filteredArticles = selectedCategory === 'all' 
-    ? articles 
-    : articles.filter(article => article.category === selectedCategory);
-
-  const handleNewsletterSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Filter articles based on selected filters
+  const filteredArticles = articles.filter(article => {
+    // AI/Manual filter
+    if (filter === 'ai' && (!article.created_by?.includes('ai') && article.ai_confidence === 0)) return false;
+    if (filter === 'manual' && (article.created_by?.includes('ai') || article.ai_confidence > 0)) return false;
+    if (filter === 'high-confidence' && article.ai_confidence < 0.8) return false;
     
-    try {
-      const response = await fetch(process.env.NEWSLETTER_SIGNUP_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, neighborhood_id: neighborhood })
-      });
+    // Category filter
+    if (categoryFilter !== 'all' && article.category !== categoryFilter) return false;
+    
+    return true;
+  });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        setSignupStatus('success');
-        setEmail('');
-      } else {
-        setSignupStatus(result.error || 'Signup failed');
-      }
-    } catch (error) {
-      setSignupStatus('Network error');
-    }
+  // Get neighborhood display name
+  const getNeighborhoodName = (slug: string) => {
+    const names = {
+      vinohrady: 'Vinohrady',
+      karlin: 'Karlín',
+      smichov: 'Smíchov',
+      zizkov: 'Žižkov'
+    };
+    return names[slug as keyof typeof names] || slug;
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'emergency': return '🚨';
-      case 'local': return '📍';
-      case 'business': return '🏪';
-      case 'community': return '🤝';
-      default: return '📰';
-    }
-  };
+  // Get categories available
+  const availableCategories = Array.from(new Set(articles.map(article => article.category)));
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'emergency': return 'bg-red-100 border-red-500 text-red-800';
-      case 'local': return 'bg-blue-100 border-blue-500 text-blue-800';
-      case 'business': return 'bg-green-100 border-green-500 text-green-800';
-      case 'community': return 'bg-yellow-100 border-yellow-500 text-yellow-800';
-      default: return 'bg-gray-100 border-gray-500 text-gray-800';
-    }
-  };
+  if (!neighborhood) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <>
       <Head>
-        <title>{`Místní Zprávy - ${neighborhoodName}`}</title>
-        <meta name="description" content={`Denní zprávy z ${neighborhoodName}`} />
+        <title>Místní Zprávy - {getNeighborhoodName(neighborhood as string)}</title>
+        <meta name="description" content={`Aktuální zprávy a informace z ${getNeighborhoodName(neighborhood as string)}, Praha`} />
       </Head>
 
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
-        <header className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+        <header className="bg-white shadow">
           <div className="container mx-auto px-4 py-6">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-3xl font-bold">📰 Místní Zprávy</h1>
-                <p className="text-blue-200">Denní zpravodajství z {neighborhoodName}</p>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  📍 Místní Zprávy - {getNeighborhoodName(neighborhood as string)}
+                </h1>
+                <p className="text-gray-600 mt-1">Aktuální informace z vaší čtvrti</p>
               </div>
-              <div className="text-right">
-                <p className="text-sm opacity-90">
-                  {new Date().toLocaleDateString('cs-CZ', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
-                </p>
+              
+              <div className="flex gap-3">
+                <Link href="/admin/dashboard" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+                  📋 Admin
+                </Link>
+                <Link href="/" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                  🏠 Domů
+                </Link>
               </div>
             </div>
+
+            {/* Stats Row */}
+            {stats && (
+              <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-600">{stats.total_articles}</div>
+                  <div className="text-sm text-blue-700">Celkem článků</div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <div className="text-2xl font-bold text-green-600">{stats.ai_generated}</div>
+                  <div className="text-sm text-green-700">AI generované</div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600">{stats.published_today}</div>
+                  <div className="text-sm text-purple-700">Dnes publikováno</div>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {stats.avg_confidence > 0 ? (stats.avg_confidence * 100).toFixed(0) + '%' : 'N/A'}
+                  </div>
+                  <div className="text-sm text-yellow-700">Průměrná AI důvěra</div>
+                </div>
+              </div>
+            )}
           </div>
         </header>
 
         <div className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2">
-              {/* Category Filter */}
-              <div className="mb-6">
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow p-6 mb-8">
+            <h3 className="text-lg font-semibold mb-4">🔍 Filtry obsahu</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Content Source Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Zdroj obsahu</label>
                 <div className="flex flex-wrap gap-2">
-                  {categories.map(category => (
+                  {[
+                    { id: 'all', label: 'Vše', icon: '📰' },
+                    { id: 'ai', label: 'AI generované', icon: '🤖' },
+                    { id: 'manual', label: 'Manuální', icon: '✍️' },
+                    { id: 'high-confidence', label: 'Vysoká AI důvěra', icon: '🎯' }
+                  ].map(filterOption => (
                     <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                        selectedCategory === category
+                      key={filterOption.id}
+                      onClick={() => setFilter(filterOption.id as any)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        filter === filterOption.id
                           ? 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-600 hover:bg-blue-50'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
-                      {category === 'all' ? '📰 Vše' : `${getCategoryIcon(category)} ${category}`}
+                      {filterOption.icon} {filterOption.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Loading State */}
-              {loading ? (
+              {/* Category Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Kategorie</label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">Všechny kategorie</option>
+                  {availableCategories.map(category => (
+                    <option key={category} value={category}>
+                      {category === 'local' ? '📍 Místní' :
+                       category === 'emergency' ? '🚨 Nouzové' :
+                       category === 'weather' ? '🌤️ Počasí' :
+                       category === 'transport' ? '🚌 Doprava' :
+                       category === 'community' ? '👥 Komunita' :
+                       category === 'business' ? '💼 Business' : category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 text-sm text-gray-600">
+              Zobrazeno: {filteredArticles.length} z {articles.length} článků
+            </div>
+          </div>
+
+          {/* Loading State */}
+          {loading && (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-500">Načítání článků...</p>
+            </div>
+          )}
+
+          {/* Articles Grid */}
+          {!loading && (
+            <>
+              {filteredArticles.length === 0 ? (
                 <div className="bg-white rounded-lg shadow p-8 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-500">Načítání článků...</p>
+                  <p className="text-gray-500 mb-4">
+                    {filter === 'all' 
+                      ? 'Zatím žádné články pro tuto čtvrť.'
+                      : 'Žádné články nevyhovují zvoleným filtrům.'
+                    }
+                  </p>
+                  <Link href="/admin/ai-dashboard" className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    🤖 Generovat AI obsah
+                  </Link>
                 </div>
               ) : (
-                /* Articles */
-                <div className="space-y-6">
-                  {filteredArticles.length === 0 ? (
-                    <div className="bg-white rounded-lg shadow p-8 text-center">
-                      <p className="text-gray-500">Žádné články zatím nebyly publikovány.</p>
-                    </div>
-                  ) : (
-                    filteredArticles.map(article => (
-                      <article key={article.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow">
-                        <div className={`p-6 border-l-4 ${getCategoryColor(article.category)}`}>
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-lg">{getCategoryIcon(article.category)}</span>
-                            <span className="text-sm font-medium uppercase tracking-wide text-gray-500">
-                              {article.category}
-                            </span>
-                            {article.ai_confidence && article.ai_confidence > 0.8 && (
-                              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                🤖 AI Ověřeno
-                              </span>
-                            )}
-                          </div>
-                          
-                          <h2 className="text-xl font-bold text-gray-900 mb-3">
-                            {article.title}
-                          </h2>
-                          
-                          <div className="prose prose-sm max-w-none text-gray-700 mb-4">
-                            {article.content.split('\n').map((paragraph, index) => (
-                              <p key={index} className="mb-2">{paragraph}</p>
-                            ))}
-                          </div>
-                          
-                          <div className="text-xs text-gray-500">
-                            Publikováno: {new Date(article.published_at || article.created_at).toLocaleString('cs-CZ')}
-                          </div>
-                        </div>
-                      </article>
-                    ))
-                  )}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {filteredArticles.map((article) => (
+                    <AIContentCard
+                      key={article.id}
+                      id={article.id}
+                      title={article.title}
+                      content={article.content}
+                      category={article.category}
+                      neighborhood={getNeighborhoodName(article.neighborhood_id)}
+                      ai_confidence={article.ai_confidence}
+                      created_by={article.created_by}
+                      created_at={article.created_at}
+                      published_at={article.published_at}
+                      status={article.status}
+                      showAIBadge={true}
+                      showActions={false}
+                    />
+                  ))}
                 </div>
               )}
-            </div>
+            </>
+          )}
 
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Newsletter Signup */}
-              <div className="bg-gradient-to-br from-blue-600 to-purple-600 text-white p-6 rounded-lg">
-                <h3 className="text-lg font-bold mb-2">📧 Denní newsletter</h3>
-                <p className="text-blue-100 text-sm mb-4">
-                  Dostávejte zprávy každé ráno v 7:30
-                </p>
-                
-                <form onSubmit={handleNewsletterSignup} className="space-y-3">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="váš email"
-                    className="w-full px-3 py-2 rounded text-gray-900 text-sm"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    className="w-full bg-gray-900 text-white py-2 px-4 rounded font-medium hover:bg-gray-800 transition-colors"
-                  >
-                    Odebírat
-                  </button>
-                </form>
-                
-                {signupStatus && (
-                  <p className={`text-sm mt-2 ${
-                    signupStatus === 'success' ? 'text-green-200' : 'text-red-200'
-                  }`}>
-                    {signupStatus === 'success' ? '✅ Úspěšně přihlášeno!' : `❌ ${signupStatus}`}
-                  </p>
-                )}
-              </div>
-
-              {/* Quick Stats */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-bold mb-4">📊 Dnes</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Nové články:</span>
-                    <span className="font-medium">{articles.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Emergency:</span>
-                    <span className="font-medium text-red-600">
-                      {articles.filter(a => a.category === 'emergency').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Místní zprávy:</span>
-                    <span className="font-medium text-blue-600">
-                      {articles.filter(a => a.category === 'local').length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Links */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-bold mb-4">🔗 Užitečné odkazy</h3>
-                <div className="space-y-2 text-sm">
-                  <a href="#" className="block text-blue-600 hover:text-blue-800">🚌 Doprava MHD</a>
-                  <a href="#" className="block text-blue-600 hover:text-blue-800">🏥 Pohotovost</a>
-                  <a href="#" className="block text-blue-600 hover:text-blue-800">📞 Úřad Prahy 2</a>
-                  <a href="#" className="block text-blue-600 hover:text-blue-800">🚓 Policie</a>
-                </div>
-              </div>
-            </div>
+          {/* Newsletter Signup */}
+          <div className="mt-12 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg shadow p-8 text-center border border-blue-200">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              📧 Odebírejte zprávy z {getNeighborhoodName(neighborhood as string)}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Získávejte nejnovější informace ze své čtvrti přímo do emailu. 
+              Kombinace AI generovaného obsahu a manuálně vybraných novinek.
+            </p>
+            <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+              <input
+                type="email"
+                placeholder="váš@email.cz"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+              <button
+                type="submit"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Odebírat
+              </button>
+            </form>
+            <p className="text-xs text-gray-500 mt-3">
+              🤖 Část obsahu je generována AI systémem s lidskou kontrolou kvality
+            </p>
           </div>
         </div>
       </div>
     </>
   );
 }
-
-export const getStaticPaths: GetStaticPaths = async () => {
-  const neighborhoods = ['vinohrady', 'karlin', 'smichov', 'zizkov'];
-  
-  const paths = neighborhoods.map((neighborhood) => ({
-    params: { neighborhood }
-  }));
-
-  return {
-    paths,
-    fallback: false
-  };
-};
-
-export const getStaticProps: GetStaticProps = async ({ params }) => {
-  const neighborhood = params?.neighborhood as string || 'vinohrady';
-  
-  const neighborhoodNames: Record<string, string> = {
-    'vinohrady': 'Vinohrady',
-    'karlin': 'Karlín',
-    'smichov': 'Smíchov',
-    'zizkov': 'Žižkov'
-  };
-
-  return {
-    props: {
-      neighborhood,
-      neighborhoodName: neighborhoodNames[neighborhood] || neighborhood
-    }
-  };
-};

@@ -1,5 +1,6 @@
-// pages/admin/dashboard.tsx - Simple admin dashboard with client-side data fetching
+// pages/admin/dashboard.tsx - Enhanced admin dashboard with AI features
 import Head from 'next/head';
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 
 interface ReviewItem {
@@ -7,15 +8,18 @@ interface ReviewItem {
   title: string;
   content: string;
   category: string;
-  neighborhood: {
-    id: string;
-    name: string;
-  };
+  neighborhood_id: string;
   ai_confidence: number;
   status: string;
   created_by: string;
   created_at: number;
-  priority: string;
+}
+
+interface AIStats {
+  ai_generated_today: number;
+  high_confidence_pending: number;
+  auto_approved_today: number;
+  avg_confidence: number;
 }
 
 export default function AdminDashboard() {
@@ -23,31 +27,65 @@ export default function AdminDashboard() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [aiStats, setAIStats] = useState<AIStats>({
+    ai_generated_today: 0,
+    high_confidence_pending: 0,
+    auto_approved_today: 0,
+    avg_confidence: 0
+  });
 
-  // Load review queue from worker
+  // Load review queue and AI stats
   useEffect(() => {
     const loadReviewQueue = async () => {
       try {
-        const response = await fetch(`${process.env.ADMIN_REVIEW_URL}/?status=draft`);
+        // Load pending content
+        const response = await fetch(`${process.env.ADMIN_REVIEW_URL}/?view=pending&limit=20`);
         const data = await response.json();
-        setReviewItems(data.items || []);
+        
+        if (data.success && data.content) {
+          setReviewItems(data.content);
+          
+          // Calculate AI stats from the data
+          const today = new Date().setHours(0, 0, 0, 0);
+          const aiGenerated = data.content.filter((item: ReviewItem) => 
+            item.created_by?.includes('ai') && item.created_at >= today
+          );
+          const highConfidence = data.content.filter((item: ReviewItem) => 
+            item.ai_confidence >= 0.8
+          );
+          const avgConfidence = data.content.length > 0 
+            ? data.content.reduce((sum: number, item: ReviewItem) => sum + (item.ai_confidence || 0), 0) / data.content.length
+            : 0;
+
+          setAIStats({
+            ai_generated_today: aiGenerated.length,
+            high_confidence_pending: highConfidence.length,
+            auto_approved_today: 0, // This would come from separate API
+            avg_confidence: avgConfidence
+          });
+        }
       } catch (error) {
         console.error('Error loading review queue:', error);
-        // Use demo data as fallback
+        // Fallback demo data
         setReviewItems([
           {
-            id: 'demo-admin-1',
-            title: 'Demo článek čekající na schválení',
-            content: 'Toto je ukázkový článek v admin dashboard. Workers jsou připojené a funkční.',
+            id: 'demo-ai-1',
+            title: 'AI: Nové úpravy ve Vinohradech',
+            content: 'Tento článek byl automaticky vygenerován AI systémem na základě aktuálních dat z Prahy...',
             category: 'local',
-            neighborhood: { id: 'vinohrady', name: 'Vinohrady' },
-            ai_confidence: 0.85,
-            status: 'draft',
-            created_by: 'demo',
-            created_at: Date.now() - 3600000,
-            priority: 'normal'
+            neighborhood_id: 'vinohrady',
+            ai_confidence: 0.87,
+            status: 'ai_generated',
+            created_by: 'ai-generate-claude',
+            created_at: Date.now() - 3600000
           }
         ]);
+        setAIStats({
+          ai_generated_today: 5,
+          high_confidence_pending: 3,
+          auto_approved_today: 2,
+          avg_confidence: 0.82
+        });
       } finally {
         setLoading(false);
       }
@@ -56,13 +94,18 @@ export default function AdminDashboard() {
     loadReviewQueue();
   }, []);
 
+  // Handle individual approval
   const handleApprove = async (id: string) => {
     setLoading(true);
     try {
       const response = await fetch(process.env.CONTENT_APPROVE_URL!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'approve', approved_by: 'admin' })
+        body: JSON.stringify({
+          id,
+          action: 'approve',
+          approved_by: 'admin'
+        })
       });
 
       if (response.ok) {
@@ -77,13 +120,18 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
+  // Handle rejection
   const handleReject = async (id: string) => {
     setLoading(true);
     try {
       const response = await fetch(process.env.CONTENT_APPROVE_URL!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'reject', approved_by: 'admin' })
+        body: JSON.stringify({
+          id,
+          action: 'reject',
+          approved_by: 'admin'
+        })
       });
 
       if (response.ok) {
@@ -98,41 +146,90 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
+  // Handle batch approval
   const handleBatchApprove = async () => {
     if (selectedItems.length === 0) return;
-    
+
     setLoading(true);
-    const promises = selectedItems.map(id => 
-      fetch(process.env.CONTENT_APPROVE_URL!, {
+    try {
+      const response = await fetch(process.env.CONTENT_BATCH_APPROVE_URL!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'approve', approved_by: 'admin' })
-      })
-    );
+        body: JSON.stringify({
+          action: 'approve',
+          content_ids: selectedItems,
+          approved_by: 'admin'
+        })
+      });
 
-    try {
-      await Promise.all(promises);
-      setReviewItems(items => items.filter(item => !selectedItems.includes(item.id)));
-      setSelectedItems([]);
-      setMessage(`✅ ${selectedItems.length} článků schváleno`);
+      if (response.ok) {
+        setReviewItems(items => items.filter(item => !selectedItems.includes(item.id)));
+        setSelectedItems([]);
+        setMessage(`✅ ${selectedItems.length} článků schváleno`);
+      } else {
+        setMessage('❌ Chyba při hromadném schvalování');
+      }
     } catch (error) {
-      setMessage('❌ Chyba při hromadném schvalování');
+      setMessage('❌ Síťová chyba');
     }
     setLoading(false);
   };
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'emergency': return 'bg-red-100 text-red-800 border-red-300';
-      case 'local': return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'business': return 'bg-green-100 text-green-800 border-green-300';
-      case 'community': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+  // Auto-approve high confidence content
+  const handleAutoApprove = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(process.env.CONTENT_AUTO_APPROVE_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          threshold: 0.85,
+          max_items: 10,
+          dry_run: false
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setMessage(`✅ Auto-schválení: ${result.approved} článků schváleno`);
+        // Refresh the review queue
+        window.location.reload();
+      } else {
+        setMessage('❌ Chyba při auto-schválení');
+      }
+    } catch (error) {
+      setMessage('❌ Síťová chyba');
     }
+    setLoading(false);
   };
 
-  const getPriorityColor = (priority: string) => {
-    return priority === 'high' ? 'border-l-4 border-red-500' : 'border-l-4 border-blue-500';
+  // Get category styling
+  const getCategoryColor = (category: string) => {
+    const colors = {
+      emergency: 'bg-red-100 text-red-800 border-red-300',
+      local: 'bg-blue-100 text-blue-800 border-blue-300',
+      business: 'bg-green-100 text-green-800 border-green-300',
+      community: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      weather: 'bg-purple-100 text-purple-800 border-purple-300',
+      transport: 'bg-orange-100 text-orange-800 border-orange-300'
+    };
+    return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-300';
+  };
+
+  // Get confidence styling
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.9) return 'text-green-600 bg-green-50';
+    if (confidence >= 0.8) return 'text-green-500 bg-green-50';
+    if (confidence >= 0.7) return 'text-yellow-600 bg-yellow-50';
+    if (confidence >= 0.6) return 'text-orange-600 bg-orange-50';
+    return 'text-red-600 bg-red-50';
+  };
+
+  // Format AI creator name
+  const formatCreator = (creator: string) => {
+    if (creator?.includes('ai-generate')) return '🤖 AI Generátor';
+    if (creator?.includes('ai')) return '🤖 AI';
+    return creator || 'Manuální';
   };
 
   return (
@@ -147,280 +244,177 @@ export default function AdminDashboard() {
           <div className="container mx-auto px-4 py-6">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">🤖 Admin Dashboard</h1>
-                <p className="text-gray-600">Správa obsahu - Místní Zprávy</p>
+                <h1 className="text-2xl font-bold text-gray-900">📋 Admin Dashboard</h1>
+                <p className="text-gray-600">Správa obsahu - Review Queue</p>
               </div>
               <div className="flex gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">{reviewItems.length}</div>
-                  <div className="text-sm text-gray-500">Čeká na schválení</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {reviewItems.filter(item => item.ai_confidence > 0.8).length}
-                  </div>
-                  <div className="text-sm text-gray-500">Vysoká AI důvěra</div>
-                </div>
+                <Link href="/admin/ai-dashboard" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                  🤖 AI Dashboard
+                </Link>
+                <Link href="/" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+                  🏠 Domů
+                </Link>
+              </div>
+            </div>
+
+            {/* AI Stats Row */}
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="text-xl font-bold text-blue-600">{reviewItems.length}</div>
+                <div className="text-sm text-blue-700">Čeká na schválení</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                <div className="text-xl font-bold text-green-600">{aiStats.high_confidence_pending}</div>
+                <div className="text-sm text-green-700">Vysoká AI důvěra</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <div className="text-xl font-bold text-purple-600">{aiStats.ai_generated_today}</div>
+                <div className="text-sm text-purple-700">AI dnes</div>
+              </div>
+              <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="text-xl font-bold text-yellow-600">{aiStats.avg_confidence.toFixed(2)}</div>
+                <div className="text-sm text-yellow-700">Průměrná důvěra</div>
               </div>
             </div>
           </div>
         </header>
 
         <div className="container mx-auto px-4 py-8">
-          {/* Status Message */}
           {message && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-blue-800">{message}</p>
             </div>
           )}
 
-          {/* Batch Actions */}
-          {selectedItems.length > 0 && (
-            <div className="mb-6 p-4 bg-white rounded-lg shadow">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">
-                  Vybráno: {selectedItems.length} článků
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleBatchApprove}
-                    disabled={loading}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-                  >
-                    ✅ Schválit vybrané
-                  </button>
-                  <button
-                    onClick={() => setSelectedItems([])}
-                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                  >
-                    Zrušit výběr
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Quick Actions */}
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              onClick={handleAutoApprove}
+              disabled={loading}
+              className="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              ⚡ Auto-schválit vysokou důvěru (≥0.85)
+            </button>
+            <button
+              onClick={handleBatchApprove}
+              disabled={loading || selectedItems.length === 0}
+              className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              ✅ Schválit vybrané ({selectedItems.length})
+            </button>
+            <button
+              onClick={() => setSelectedItems([])}
+              disabled={selectedItems.length === 0}
+              className="px-4 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 disabled:opacity-50"
+            >
+              🔄 Zrušit výběr
+            </button>
+          </div>
 
-          {/* Loading State */}
           {loading && reviewItems.length === 0 ? (
             <div className="bg-white rounded-lg shadow p-8 text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-gray-500">Načítání review queue...</p>
             </div>
+          ) : reviewItems.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-8 text-center">
+              <p className="text-gray-500">🎉 Žádné články nečekají na schválení!</p>
+              <Link href="/admin/ai-dashboard" className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                🤖 Přejít na AI Dashboard
+              </Link>
+            </div>
           ) : (
-            /* Review Queue */
             <div className="space-y-4">
-              {reviewItems.length === 0 ? (
-                <div className="bg-white rounded-lg shadow p-8 text-center">
-                  <p className="text-gray-500">🎉 Žádné články nečekají na schválení!</p>
-                </div>
-              ) : (
-                reviewItems.map(item => (
-                  <div key={item.id} className={`bg-white rounded-lg shadow ${getPriorityColor(item.priority)}`}>
-                    <div className="p-6">
-                      {/* Header */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedItems.includes(item.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedItems([...selectedItems, item.id]);
-                              } else {
-                                setSelectedItems(selectedItems.filter(id => id !== item.id));
-                              }
-                            }}
-                            className="w-4 h-4"
-                          />
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getCategoryColor(item.category)}`}>
-                            {item.category.toUpperCase()}
+              {reviewItems.map((item) => (
+                <div key={item.id} className="bg-white rounded-lg shadow p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-4 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(item.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedItems([...selectedItems, item.id]);
+                          } else {
+                            setSelectedItems(selectedItems.filter(id => id !== item.id));
+                          }
+                        }}
+                        className="mt-1 h-4 w-4 text-blue-600"
+                      />
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-lg font-medium text-gray-900">{item.title}</h3>
+                          <span className={`px-2 py-1 text-xs rounded border ${getCategoryColor(item.category)}`}>
+                            {item.category}
                           </span>
-                          <span className="text-sm text-gray-500">
-                            {item.neighborhood.name}
+                          <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                            {item.neighborhood_id}
                           </span>
-                          {item.priority === 'high' && (
-                            <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded">
-                              URGENTNÍ
+                        </div>
+
+                        <p className="text-gray-600 mb-3 line-clamp-3">{item.content}</p>
+
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <span>{formatCreator(item.created_by)}</span>
+                          <span>{new Date(item.created_at).toLocaleString('cs-CZ')}</span>
+                          {item.ai_confidence > 0 && (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConfidenceColor(item.ai_confidence)}`}>
+                              🎯 {(item.ai_confidence * 100).toFixed(0)}% důvěra
                             </span>
                           )}
                         </div>
-                        
-                        <div className="text-right text-sm text-gray-500">
-                          <div>Vytvořeno: {new Date(item.created_at).toLocaleString('cs-CZ')}</div>
-                          <div>Autor: {item.created_by}</div>
-                          {item.ai_confidence > 0 && (
-                            <div className={`font-medium ${
-                              item.ai_confidence > 0.8 ? 'text-green-600' : 
-                              item.ai_confidence > 0.6 ? 'text-yellow-600' : 'text-red-600'
-                            }`}>
-                              AI Confidence: {Math.round(item.ai_confidence * 100)}%
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="mb-4">
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">
-                          {item.title}
-                        </h3>
-                        <div className="text-gray-700 prose prose-sm max-w-none">
-                          {item.content.split('\n').map((paragraph, index) => (
-                            <p key={index} className="mb-2">{paragraph}</p>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleApprove(item.id)}
-                          disabled={loading}
-                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
-                        >
-                          ✅ Schválit
-                        </button>
-                        <button
-                          onClick={() => handleReject(item.id)}
-                          disabled={loading}
-                          className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
-                        >
-                          ❌ Zamítnout
-                        </button>
-                        <button
-                          disabled={loading}
-                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                        >
-                          ✏️ Upravit
-                        </button>
-                        <button
-                          disabled={loading}
-                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50 transition-colors"
-                        >
-                          🔍 Detail
-                        </button>
                       </div>
                     </div>
+
+                    <div className="flex gap-2 ml-4">
+                      <button
+                        onClick={() => handleApprove(item.id)}
+                        disabled={loading}
+                        className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        ✅ Schválit
+                      </button>
+                      <button
+                        onClick={() => handleReject(item.id)}
+                        disabled={loading}
+                        className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                      >
+                        ❌ Zamítnout
+                      </button>
+                    </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Create New Content */}
-          <div className="mt-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-bold mb-4">➕ Rychlé vytvoření obsahu</h3>
-              <CreateContentForm onContentCreated={() => window.location.reload()} />
+          {/* Quick Content Creation */}
+          <div className="mt-8 bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold mb-4">➕ Rychlé vytvoření obsahu</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="font-medium mb-2">🤖 AI Generování</h4>
+                <Link 
+                  href="/admin/ai-dashboard?tab=generation"
+                  className="block px-4 py-3 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-center"
+                >
+                  Generovat AI obsah
+                </Link>
+              </div>
+              <div>
+                <h4 className="font-medium mb-2">✍️ Manuální vytvoření</h4>
+                <Link 
+                  href="/admin/content/create"
+                  className="block px-4 py-3 bg-green-100 text-green-800 rounded hover:bg-green-200 text-center"
+                >
+                  Vytvořit manuálně
+                </Link>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </>
-  );
-}
-
-function CreateContentForm({ onContentCreated }: { onContentCreated: () => void }) {
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    category: 'local',
-    neighborhood_id: 'vinohrady'
-  });
-  const [creating, setCreating] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-
-    try {
-      const response = await fetch(process.env.CONTENT_CREATE_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, created_by: 'admin' })
-      });
-
-      if (response.ok) {
-        setFormData({ title: '', content: '', category: 'local', neighborhood_id: 'vinohrady' });
-        onContentCreated();
-      }
-    } catch (error) {
-      console.error('Error creating content:', error);
-    }
-    setCreating(false);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Kategorie
-          </label>
-          <select
-            value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          >
-            <option value="emergency">🚨 Emergency</option>
-            <option value="local">📍 Local</option>
-            <option value="business">🏪 Business</option>
-            <option value="community">🤝 Community</option>
-          </select>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Čtvrť
-          </label>
-          <select
-            value={formData.neighborhood_id}
-            onChange={(e) => setFormData({ ...formData, neighborhood_id: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          >
-            <option value="vinohrady">Vinohrady</option>
-            <option value="karlin">Karlín</option>
-            <option value="smichov">Smíchov</option>
-            <option value="zizkov">Žižkov</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Nadpis
-        </label>
-        <input
-          type="text"
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="Nadpis článku..."
-          required
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Obsah
-        </label>
-        <textarea
-          value={formData.content}
-          onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="Obsah článku..."
-          required
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={creating}
-        className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-      >
-        {creating ? 'Vytváří se...' : '💾 Vytvořit článek'}
-      </button>
-    </form>
   );
 }
