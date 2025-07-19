@@ -1,0 +1,112 @@
+{
+    "name": "ai-news-portal-backend",
+    "version": "1.0.0",
+    "description": "AI-powered hyperlocal news platform using Cloudflare micro-workers",
+    "author": "AI CTO",
+    "license": "MIT",
+    "type": "module",
+    "scripts": {
+      "start": "echo 'Use npm run deploy:all to deploy all workers'",
+      "dev": "npm run dev:migrate",
+      "dev:migrate": "wrangler dev scripts/migrate.js --name db-migrate-dev",
+      "dev:auth": "wrangler dev workers/auth/auth-login.js --name auth-login-dev",
+      "dev:content": "wrangler dev workers/content/content-list.js --name content-list-dev",
+      
+      "deploy": "npm run deploy:all",
+      "deploy:all": "npm run deploy:infra && npm run deploy:workers",
+      "deploy:infra": "npm run deploy:migrate",
+      "deploy:migrate": "wrangler deploy scripts/migrate.js --name db-migrate",
+      
+      "deploy:workers": "npm run deploy:auth && npm run deploy:content && npm run deploy:admin && npm run deploy:newsletter",
+      "deploy:auth": "wrangler deploy workers/auth/auth-login.js --name auth-login",
+      "deploy:content": "npm run deploy:content:create && npm run deploy:content:list && npm run deploy:content:approve",
+      "deploy:content:create": "wrangler deploy workers/content/content-create.js --name content-create",
+      "deploy:content:list": "wrangler deploy workers/content/content-list.js --name content-list",
+      "deploy:content:approve": "wrangler deploy workers/content/content-approve.js --name content-approve",
+      "deploy:admin": "wrangler deploy workers/admin/admin-review-queue.js --name admin-review-queue",
+      "deploy:newsletter": "wrangler deploy workers/newsletter/newsletter-signup.js --name newsletter-signup",
+      
+      "setup": "npm run setup:infra && npm run setup:data",
+      "setup:infra": "npm run create:db && npm run create:kv && npm run create:r2",
+      "setup:data": "npm run migrate && npm run seed",
+      "create:db": "wrangler d1 create ai-news-db",
+      "create:kv": "wrangler kv:namespace create AI_NEWS_KV",
+      "create:r2": "wrangler r2 bucket create ai-news-files",
+      
+      "migrate": "curl https://db-migrate.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/",
+      "seed": "npm run seed:neighborhoods && npm run seed:sample",
+      "seed:neighborhoods": "wrangler d1 execute ai-news-db --remote --command \"INSERT OR IGNORE INTO neighborhoods (id, name, slug) VALUES ('vinohrady', 'Vinohrady', 'vinohrady'), ('karlin', 'Karlín', 'karlin'), ('smichov', 'Smíchov', 'smichov'), ('zizkov', 'Žižkov', 'zizkov')\"",
+      "seed:sample": "npm run create:sample:content",
+      
+      "test": "npm run test:workers && npm run test:api",
+      "test:workers": "npm run test:content && npm run test:auth",
+      "test:content": "node tests/test-content.js",
+      "test:auth": "node tests/test-auth.js",
+      "test:api": "node tests/test-api-integration.js",
+      
+      "db:query": "wrangler d1 execute ai-news-db --remote --command",
+      "db:status": "npm run db:query \"SELECT 'neighborhoods' as table_name, COUNT(*) as count FROM neighborhoods UNION SELECT 'content', COUNT(*) FROM content UNION SELECT 'users', COUNT(*) FROM users\"",
+      "db:reset": "npm run db:clear && npm run migrate && npm run seed",
+      "db:clear": "npm run db:query \"DELETE FROM content; DELETE FROM users WHERE role != 'admin'; DELETE FROM businesses; DELETE FROM consents;\"",
+      
+      "logs": "npm run logs:auth",
+      "logs:auth": "wrangler tail auth-login",
+      "logs:content": "wrangler tail content-list",
+      "logs:admin": "wrangler tail admin-review-queue",
+      
+      "status": "npm run status:workers && npm run status:db",
+      "status:workers": "echo 'Checking worker status...' && curl -s https://auth-login.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/ || echo 'Workers not deployed'",
+      "status:db": "npm run db:status",
+      
+      "create:sample:content": "node scripts/create-sample-content.js",
+      "quick-start": "./quick-start.sh",
+      
+      "lint": "eslint workers/ scripts/ --ext .js",
+      "format": "prettier --write workers/ scripts/ utils/",
+      
+      "phase2:setup": "echo 'Phase 2: AI workers setup' && npm run phase2:deploy",
+      "phase2:deploy": "echo 'Deploy AI workers when ready'",
+      "phase3:setup": "echo 'Phase 3: Business intelligence setup'",
+      "phase4:setup": "echo 'Phase 4: GDPR compliance setup'"
+    },
+    "devDependencies": {
+      "wrangler": "^3.0.0",
+      "eslint": "^8.50.0",
+      "prettier": "^3.0.0",
+      "vitest": "^1.0.0",
+      "@types/node": "^20.8.0"
+    },
+    "dependencies": {
+      "node-fetch": "^3.3.0"
+    },
+    "engines": {
+      "node": ">=18.0.0"
+    },
+    "keywords": [
+      "cloudflare-workers",
+      "micro-workers",
+      "hyperlocal-news",
+      "ai-content",
+      "prague",
+      "czech",
+      "d1-database",
+      "serverless"
+    ],
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/your-username/ai-news-portal.git"
+    },
+    "config": {
+      "environments": {
+        "development": {
+          "suffix": "-dev"
+        },
+        "staging": {
+          "suffix": "-staging"
+        },
+        "production": {
+          "suffix": ""
+        }
+      }
+    }
+  }
