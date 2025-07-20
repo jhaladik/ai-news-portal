@@ -28,29 +28,38 @@ export default {
 
         // FIXED: Create new variable instead of reassigning const
         let contextData = data || {};
+        console.log('🔍 Checking KV for prague data...');
         const pragueDataKeys = await env.AI_NEWS_KV.list({ prefix: 'prague-data-' });
+        console.log('📊 Found KV keys count:', pragueDataKeys.keys.length);
         if (pragueDataKeys.keys.length > 0) {
             const latestKey = pragueDataKeys.keys[0].name;
+            console.log('🗝️ Using key:', latestKey);
             const pragueData = await env.AI_NEWS_KV.get(latestKey);
+            console.log('📦 Retrieved data:', pragueData?.slice(0,100));
             contextData = { ...contextData, ...JSON.parse(pragueData) };
+        } else {
+            console.log('❌ No KV keys found');
         }
-        // Check if we have Claude API access or should use fallback
-        const useClaudeAPI = env.CLAUDE_API_KEY && env.CLAUDE_API_KEY !== 'demo';
         
+        // Check if we have Claude API access or should use fallback
+        const useClaudeAPI = env.CLAUDE_API_KEY && env.CLAUDE_API_KEY !== 'demo' && env.CLAUDE_API_KEY.startsWith('sk-ant-');        
         let generatedContent, generatedTitle;
   
         if (useClaudeAPI) {
           // Use real Claude API
-          const result = await generateWithClaudeAPI(data, neighborhood, category, type, env);
+          const result = await generateWithClaudeAPI(contextData, neighborhood, category, type, env);
           generatedContent = result.content;
           generatedTitle = result.title;
         } else {
           // Use fallback mock generation for testing
-          const result = generateMockContent(data, neighborhood, category, type);
+          const result = generateMockContent(contextData, neighborhood, category, type);
           generatedContent = result.content;
           generatedTitle = result.title;
         }
-  
+        console.log('🤖 Claude API key exists:', !!env.CLAUDE_API_KEY);
+        console.log('🤖 Key starts with sk-ant:', env.CLAUDE_API_KEY?.startsWith('sk-ant-'));
+        console.log('🎯 Will use Claude API:', useClaudeAPI);
+
         // Store generated content in database
         const contentId = crypto.randomUUID();
         await env.DB.prepare(`
@@ -110,22 +119,27 @@ export default {
   - Délka: 100-250 slov
   - Tón: přátelský, informativní
   - Zaměř se na praktické informace`;
-  
+
+      // In generateWithClaudeAPI function, add logs:
+    console.log('🚀 Making Claude API call...');
+    console.log('📝 Prompt:', prompt.slice(0, 100));
+
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": env.CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 800,
-        messages: [
-          { role: "user", content: prompt }
-        ]
+        messages: [{ role: "user", content: prompt }]
       })
     });
-  
+
+    console.log('📡 Claude response status:', claudeResponse.status);
+
     if (!claudeResponse.ok) {
       throw new Error(`Claude API error: ${claudeResponse.status}`);
     }
@@ -145,9 +159,10 @@ export default {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": env.CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 100,
         messages: [
           { role: "user", content: titlePrompt }
