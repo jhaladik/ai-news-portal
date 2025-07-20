@@ -25,3 +25,4 @@ logs/
 # Misc
 *.local
 .env.*
+wrangler.toml
