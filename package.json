@@ -1,7 +1,7 @@
 {
   "name": "ai-news-portal-backend",
-  "version": "2.0.0",
-  "description": "AI-powered hyperlocal news platform - Phase 2: AI Content Generation",
+  "version": "2.1.0",
+  "description": "AI-powered hyperlocal news platform - Phase 2b: Intelligent RSS Pipeline",
   "author": "AI CTO",
   "license": "MIT",
   "type": "module",
@@ -12,10 +12,11 @@
     "dev:auth": "wrangler dev workers/auth/auth-login.js --name auth-login-dev",
     "dev:content": "wrangler dev workers/content/content-list.js --name content-list-dev",
     
-    "deploy": "npm run deploy:all",
-    "deploy:all": "npm run deploy:infra && npm run deploy:workers",
-    "deploy:infra": "npm run deploy:migrate",
+    "deploy": "npm run deploy:phase2b",
+    "deploy:all": "npm run deploy:infra && npm run deploy:workers && npm run deploy:phase2b",
+    "deploy:infra": "npm run deploy:migrate && npm run deploy:migrate:phase2b",
     "deploy:migrate": "wrangler deploy scripts/migrate.js --name db-migrate",
+    "deploy:migrate:phase2b": "wrangler deploy scripts/migrate-phase2b.js --name db-migrate-phase2b",
     
     "deploy:workers": "npm run deploy:auth && npm run deploy:content && npm run deploy:admin && npm run deploy:newsletter && npm run deploy:ai",
     "deploy:auth": "wrangler deploy workers/auth/auth-login.js --name auth-login",
@@ -30,119 +31,102 @@
     "deploy:ai:data": "npm run deploy:ai:prague && npm run deploy:ai:transport",
     "deploy:ai:prague": "wrangler deploy workers/ai/data-collect-prague.js --name data-collect-prague",
     "deploy:ai:transport": "wrangler deploy workers/ai/data-collect-dpp.js --name data-collect-dpp",
-    
     "deploy:ai:generation": "npm run deploy:ai:generate && npm run deploy:ai:validate && npm run deploy:ai:score",
-    "deploy:ai:generate": "wrangler deploy workers/ai/ai-generate.js --name ai-generate",
-    "deploy:ai:validate": "wrangler deploy workers/ai/ai-validate.js --name ai-validate",
+    "deploy:ai:generate": "wrangler deploy workers/ai/ai-generate-enhanced.js --name ai-generate-enhanced",
+    "deploy:ai:validate": "wrangler deploy workers/ai/ai-validate-enhanced.js --name ai-validate-enhanced",
     "deploy:ai:score": "wrangler deploy workers/ai/ai-score.js --name ai-score",
-    
     "deploy:ai:automation": "npm run deploy:ai:scheduler && npm run deploy:ai:auto-approve && npm run deploy:ai:batch",
-    "deploy:ai:scheduler": "wrangler deploy workers/ai/scheduler-daily.js --name scheduler-daily",
-    "deploy:ai:auto-approve": "wrangler deploy workers/ai/content-auto-approve.js --name content-auto-approve",
-    "deploy:ai:batch": "wrangler deploy workers/ai/content-batch-approve.js --name content-batch-approve",
+    "deploy:ai:scheduler": "wrangler deploy workers/scheduler/scheduler-daily-enhanced.js --name scheduler-daily-enhanced",
+    "deploy:ai:auto-approve": "wrangler deploy workers/content/content-auto-approve.js --name content-auto-approve",
+    "deploy:ai:batch": "wrangler deploy workers/content/content-batch-approve.js --name content-batch-approve",
+
+    "deploy:phase2b": "npm run deploy:phase2b:rss && npm run deploy:phase2b:ai && npm run deploy:phase2b:pipeline && npm run deploy:phase2b:enhanced",
+    "deploy:phase2b:rss": "wrangler deploy workers/rss/rss-collect.js --name rss-collect",
+    "deploy:phase2b:ai": "npm run deploy:phase2b:ai:score && npm run deploy:phase2b:ai:generate && npm run deploy:phase2b:ai:validate",
+    "deploy:phase2b:ai:score": "wrangler deploy workers/ai/ai-data-score.js --name ai-data-score",
+    "deploy:phase2b:ai:generate": "wrangler deploy workers/ai/ai-generate-enhanced.js --name ai-generate-enhanced",
+    "deploy:phase2b:ai:validate": "wrangler deploy workers/ai/ai-validate-enhanced.js --name ai-validate-enhanced",
+    "deploy:phase2b:pipeline": "npm run deploy:phase2b:publish && npm run deploy:phase2b:orchestrator",
+    "deploy:phase2b:publish": "wrangler deploy workers/content/content-publish.js --name content-publish",
+    "deploy:phase2b:orchestrator": "wrangler deploy workers/pipeline/pipeline-orchestrator.js --name pipeline-orchestrator",
+    "deploy:phase2b:enhanced": "npm run deploy:phase2b:scheduler && npm run deploy:phase2b:admin",
+    "deploy:phase2b:scheduler": "wrangler deploy workers/scheduler/scheduler-daily-enhanced.js --name scheduler-daily-enhanced",
+    "deploy:phase2b:admin": "wrangler deploy workers/admin/admin-review-enhanced.js --name admin-review-enhanced",
+
+    "db:status": "wrangler d1 execute ai-news-db --remote --command \"SELECT name FROM sqlite_master WHERE type='table';\"",
+    "db:check": "wrangler d1 execute ai-news-db --remote --command \"SELECT COUNT(*) as content_count FROM content; SELECT COUNT(*) as user_count FROM users;\"",
+    "db:reset": "echo 'WARNING: This will delete all data!' && wrangler d1 execute ai-news-db --remote --file schemas/reset.sql",
+    "db:migrate": "curl -X POST https://db-migrate.jhaladik.workers.dev/",
+    "db:migrate:phase2b": "curl -X POST https://db-migrate-phase2b.jhaladik.workers.dev/",
+    "db:sample": "node scripts/create-sample-data.js",
     
-    "setup": "npm run setup:infra && npm run setup:workers && npm run setup:ai",
-    "setup:infra": "echo 'Run: wrangler d1 create ai-news-db and update wrangler.toml'",
-    "setup:workers": "echo 'Run: npm run deploy:workers after infrastructure setup'",
-    "setup:ai": "echo 'Set OPENWEATHER_API_KEY in wrangler.toml [vars] section'",
+    "test": "npm run test:phase2b",
+    "test:all": "npm run test:workers && npm run test:phase2b && npm run test:pipeline",
+    "test:workers": "node scripts/test-all-workers.js",
+    "test:phase2b": "node scripts/test-phase2b.js",
+    "test:pipeline": "npm run test:pipeline:collect && npm run test:pipeline:full",
+    "test:pipeline:collect": "curl -X POST https://pipeline-orchestrator.jhaladik.workers.dev/ -H 'Content-Type: application/json' -d '{\"mode\":\"collect\"}'",
+    "test:pipeline:full": "curl -X POST https://pipeline-orchestrator.jhaladik.workers.dev/ -H 'Content-Type: application/json' -d '{\"mode\":\"full\"}'",
+    "test:rss": "curl -X POST https://rss-collect.jhaladik.workers.dev/",
+    "test:ai:score": "curl -X POST https://ai-data-score.jhaladik.workers.dev/",
+    "test:ai:validate": "curl -X POST https://ai-validate-enhanced.jhaladik.workers.dev/ -H 'Content-Type: application/json' -d '{\"content_text\":\"Prague transport update for residents\",\"category\":\"transport\"}'",
     
-    "db:migrate": "curl https://db-migrate.$(whoami).workers.dev/",
-    "db:status": "wrangler d1 execute ai-news-db --remote --command \"SELECT COUNT(*) as total_content FROM content\"",
-    "db:backup": "wrangler d1 export ai-news-db --remote --output backup-$(date +%Y%m%d).sql",
-    "db:sample": "node scripts/create-sample-content.js",
+    "logs": "npm run logs:pipeline",
+    "logs:all": "npm run logs:rss && npm run logs:ai && npm run logs:pipeline",
+    "logs:rss": "wrangler tail rss-collect",
+    "logs:ai": "wrangler tail ai-data-score",
+    "logs:pipeline": "wrangler tail pipeline-orchestrator",
+    "logs:scheduler": "wrangler tail scheduler-daily-enhanced",
+    "logs:admin": "wrangler tail admin-review-enhanced",
     
-    "test": "npm run test:workers",
-    "test:workers": "./test-workers.sh",
-    "test:ai": "./test-ai-pipeline.sh",
-    "test:end-to-end": "npm run test:workers && npm run test:ai",
+    "pipeline:run": "curl -X POST https://pipeline-orchestrator.jhaladik.workers.dev/ -H 'Content-Type: application/json' -d '{\"mode\":\"full\"}'",
+    "pipeline:collect": "curl -X POST https://rss-collect.jhaladik.workers.dev/",
+    "pipeline:score": "curl -X POST https://ai-data-score.jhaladik.workers.dev/",
+    "pipeline:status": "curl https://scheduler-daily-enhanced.jhaladik.workers.dev/",
     
-    "logs": "npm run logs:scheduler",
-    "logs:auth": "wrangler tail auth-login",
-    "logs:content": "wrangler tail content-list",
-    "logs:admin": "wrangler tail admin-review-queue",
-    "logs:ai": "wrangler tail ai-generate",
-    "logs:scheduler": "wrangler tail scheduler-daily",
-    "logs:data": "wrangler tail data-collect-prague",
+    "admin:queue": "curl https://admin-review-enhanced.jhaladik.workers.dev/",
+    "admin:insights": "curl https://admin-review-enhanced.jhaladik.workers.dev/?action=insights",
+    "admin:stats": "curl https://admin-review-enhanced.jhaladik.workers.dev/?action=queue",
     
-    "status": "npm run status:workers && npm run status:db && npm run status:ai",
-    "status:workers": "echo 'Checking worker status...' && curl -s https://auth-login.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/ || echo 'Workers not deployed'",
-    "status:db": "npm run db:status",
-    "status:ai": "npm run status:ai:pipeline",
-    "status:ai:pipeline": "curl -s https://ai-generate.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/ || echo 'AI workers not deployed'",
+    "monitoring:health": "npm run monitoring:endpoints && npm run monitoring:database",
+    "monitoring:endpoints": "node scripts/health-check-endpoints.js",
+    "monitoring:database": "npm run db:check",
     
-    "create:sample:content": "node scripts/create-sample-content.js",
-    "create:sample:ai": "node scripts/test-ai-generation.js",
-    "quick-start": "./quick-start.sh",
-    "quick-start:phase2": "./quick-start-phase2.sh",
+    "setup:phase2b": "npm run deploy:migrate:phase2b && npm run deploy:phase2b && npm run test:phase2b",
+    "setup:cron": "wrangler triggers set scheduler-daily-enhanced --cron \"0 8,14,20 * * *\"",
+    "setup:complete": "npm run setup:phase2b && npm run setup:cron && npm run pipeline:run",
+    
+    "status": "npm run status:workers && npm run status:database && npm run status:phase2b",
+    "status:workers": "echo 'Checking Phase 2b workers...' && curl -s https://rss-collect.jhaladik.workers.dev/ > /dev/null && echo '✅ RSS Collect' || echo '❌ RSS Collect'",
+    "status:database": "npm run db:status",
+    "status:phase2b": "npm run status:phase2b:pipeline && npm run status:phase2b:ai",
+    "status:phase2b:pipeline": "curl -s https://pipeline-orchestrator.jhaladik.workers.dev/ > /dev/null && echo '✅ Pipeline' || echo '❌ Pipeline'",
+    "status:phase2b:ai": "curl -s https://ai-data-score.jhaladik.workers.dev/ > /dev/null && echo '✅ AI Score' || echo '❌ AI Score'",
+    
+    "quick-start": "./scripts/deploy-phase2b.sh",
+    "quick-start:phase2b": "npm run setup:phase2b",
     
     "lint": "eslint workers/ scripts/ --ext .js",
     "format": "prettier --write workers/ scripts/ utils/",
     
-    "phase2:setup": "echo 'Phase 2: AI Content Generation setup' && npm run phase2:deploy && npm run phase2:test",
-    "phase2:deploy": "npm run deploy:ai",
-    "phase2:test": "npm run test:ai",
-    "phase2:schedule": "echo 'Set up Cron Trigger in Cloudflare dashboard: scheduler-daily at 0 8 * * * (8 AM daily)'",
-    
-    "phase3:setup": "echo 'Phase 3: Business intelligence setup - coming next'",
-    "phase4:setup": "echo 'Phase 4: GDPR compliance setup - coming later'",
-    
-    "ai:run-pipeline": "curl -X POST https://scheduler-daily.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/",
-    "ai:collect-data": "curl https://data-collect-prague.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/ && curl https://data-collect-dpp.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/",
-    "ai:generate-content": "curl -X POST https://ai-generate.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/ -H 'Content-Type: application/json' -d '{\"neighborhood\":\"vinohrady\",\"category\":\"local\"}'",
-    "ai:auto-approve": "curl -X POST https://content-auto-approve.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/ -H 'Content-Type: application/json' -d '{\"threshold\":0.85,\"dry_run\":false}'",
-    
-    "admin:dashboard": "curl https://admin-review-queue.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/?view=stats",
-    "admin:ai-metrics": "curl https://admin-review-queue.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/?view=ai_metrics",
-    "admin:daily-summary": "curl https://admin-review-queue.$(wrangler whoami | grep Account | cut -d' ' -f2 | tr '[:upper:]' '[:lower:]').workers.dev/?view=daily_summary"
+    "docs:phase2b": "echo 'Phase 2b: Intelligent RSS Pipeline Documentation' && echo 'RSS Sources → AI Scoring → Generation → Validation → Publication'"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0",
-    "eslint": "^8.50.0",
-    "prettier": "^3.0.0",
-    "vitest": "^1.0.0",
-    "@types/node": "^20.8.0"
-  },
-  "dependencies": {
-    "node-fetch": "^3.3.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5"
   },
   "keywords": [
-    "cloudflare-workers",
-    "micro-workers",
-    "hyperlocal-news",
-    "ai-content",
-    "claude-api",
+    "cloudflare",
+    "workers",
+    "ai",
+    "rss",
+    "news",
     "prague",
-    "czech",
-    "d1-database",
-    "serverless",
-    "ai-automation",
-    "content-generation"
+    "hyperlocal",
+    "automation",
+    "phase2b"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/jhaladik/ai-news-portal.git"
-  },
-  "config": {
-    "environments": {
-      "development": {
-        "suffix": "-dev"
-      },
-      "staging": {
-        "suffix": "-staging"
-      },
-      "production": {
-        "suffix": ""
-      }
-    },
-    "ai": {
-      "claude_model": "claude-sonnet-4-20250514",
-      "max_tokens": 800,
-      "confidence_threshold": 0.85,
-      "auto_approve_threshold": 0.85,
-      "daily_schedule": "0 8 * * *"
-    }
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

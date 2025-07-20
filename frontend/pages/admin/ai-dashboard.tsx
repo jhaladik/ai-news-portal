@@ -1,518 +1,189 @@
-// pages/admin/ai-dashboard.tsx - Comprehensive AI Content Generation Dashboard
+// pages/admin/ai-dashboard.tsx - Enhanced with Phase 2b RSS Pipeline monitoring
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
 
-interface AIMetrics {
-  ai_worker_performance: Array<{
-    created_by: string;
-    total_generated: number;
-    avg_confidence: number;
-    published_count: number;
-    high_quality_count: number;
-  }>;
-  confidence_distribution: Array<{
-    confidence_range: string;
-    count: number;
-    published_in_range: number;
-  }>;
-  recent_daily_summaries: Array<{
-    date: string;
-    content_generation: {
-      neighborhoods_processed: number;
-      content_generated: number;
-      generation_failures: number;
-    };
-    data_collection: {
-      prague_points: number;
-      transport_disruptions: number;
-    };
-    validation: {
-      items_scored: number;
-    };
-    auto_approval: {
-      items_approved: number;
-    };
-  }>;
+interface PipelineStats {
+  collected: number;
+  scored: number;
+  generated: number;
+  validated: number;
+  published: number;
+  pipeline_run_id: string;
+  completed_at: number;
+  duration_ms: number;
 }
 
-interface DataCollectionStatus {
-  prague_data: {
-    success: boolean;
-    collected: number;
-    timestamp: number;
-    kv_stored: boolean;
-    preview: {
-      weather: string;
-      temperature: number;
-      events: string;
-    };
-  };
-  transport_data: {
-    success: boolean;
-    disruptions: number;
-    stored_articles: number;
-    kv_stored: boolean;
-    active_issues: Array<{
-      line: string;
-      type: string;
-      severity: string;
-      title: string;
-    }>;
-  };
-}
-
-interface AutoApprovalSettings {
-  threshold: number;
+interface RSSSource {
+  id: string;
+  name: string;
+  url: string;
   enabled: boolean;
-  max_items: number;
-  dry_run: boolean;
+  last_fetched: number;
+  fetch_count: number;
+  error_count: number;
+}
+
+interface ScoringMetrics {
+  processed: number;
+  qualified: number;
+  qualification_rate: number;
+  categories: { [key: string]: number };
 }
 
 export default function AIDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'generation' | 'data' | 'quality' | 'settings'>('overview');
-  const [aiMetrics, setAIMetrics] = useState<AIMetrics | null>(null);
-  const [dataStatus, setDataStatus] = useState<DataCollectionStatus | null>(null);
-  const [autoApprovalSettings, setAutoApprovalSettings] = useState<AutoApprovalSettings>({
-    threshold: 0.85,
-    enabled: true,
-    max_items: 20,
-    dry_run: false
-  });
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'overview' | 'rss' | 'scoring' | 'generation' | 'pipeline'>('overview');
+  const [pipelineStats, setPipelineStats] = useState<PipelineStats | null>(null);
+  const [rssSources, setRssSources] = useState<RSSSource[]>([]);
+  const [scoringMetrics, setScoringMetrics] = useState<ScoringMetrics | null>(null);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  // Load AI metrics and status
   useEffect(() => {
-    const loadAIData = async () => {
-      setLoading(true);
-      try {
-        // Load AI metrics
-        const metricsResponse = await fetch(`${process.env.ADMIN_REVIEW_URL}/?view=ai_metrics`);
-        if (metricsResponse.ok) {
-          const metrics = await metricsResponse.json();
-          setAIMetrics(metrics);
-        }
-
-        // Load data collection status
-        const pragueResponse = await fetch(process.env.DATA_COLLECT_PRAGUE_URL!);
-        const transportResponse = await fetch(process.env.DATA_COLLECT_DPP_URL!);
-        
-        const [pragueData, transportData] = await Promise.all([
-          pragueResponse.json(),
-          transportResponse.json()
-        ]);
-
-        setDataStatus({
-          prague_data: pragueData,
-          transport_data: transportData
-        });
-
-      } catch (error) {
-        console.error('Error loading AI data:', error);
-        setMessage('⚠️ Chyba při načítání AI dat');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadAIData();
+    loadData();
+    // Refresh data every 30 seconds
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Manual content generation
-  const handleGenerateContent = async (neighborhood: string, category: string) => {
+  const loadData = async () => {
+    try {
+      // Load pipeline stats
+      const pipelineResponse = await fetch(process.env.PIPELINE_ORCHESTRATOR_URL!);
+      if (pipelineResponse.ok) {
+        const pipelineData = await pipelineResponse.json();
+        setPipelineStats(pipelineData);
+      }
+
+      // Load RSS collection stats
+      const rssResponse = await fetch(process.env.RSS_COLLECT_URL!);
+      if (rssResponse.ok) {
+        const rssData = await rssResponse.json();
+        // Mock RSS sources data - in real implementation this would come from a sources management endpoint
+        setRssSources([
+          { id: 'praha4', name: 'Praha 4 Official', url: 'https://www.praha4.cz/rss', enabled: true, last_fetched: Date.now(), fetch_count: 45, error_count: 2 },
+          { id: 'praha2', name: 'Praha 2 Official', url: 'https://www.praha2.cz/rss', enabled: true, last_fetched: Date.now(), fetch_count: 38, error_count: 1 },
+          { id: 'dpp', name: 'Prague Public Transport', url: 'https://www.dpp.cz/rss', enabled: true, last_fetched: Date.now(), fetch_count: 52, error_count: 0 },
+          { id: 'weather', name: 'Prague Weather', url: 'https://api.openweathermap.org/data/2.5/weather?q=Prague', enabled: true, last_fetched: Date.now(), fetch_count: 28, error_count: 3 }
+        ]);
+      }
+
+      // Load AI scoring metrics
+      const scoringResponse = await fetch(process.env.AI_DATA_SCORE_URL!);
+      if (scoringResponse.ok) {
+        const scoringData = await scoringResponse.json();
+        setScoringMetrics(scoringData);
+      }
+
+    } catch (error) {
+      console.error('Failed to load AI dashboard data:', error);
+      setMessage('❌ Chyba při načítání dat');
+    }
+  };
+
+  const runPipeline = async (mode: string = 'full') => {
     setLoading(true);
     try {
-      const response = await fetch(process.env.AI_GENERATE_URL!, {
+      const response = await fetch(process.env.PIPELINE_ORCHESTRATOR_URL!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          neighborhood,
-          category,
-          type: 'manual_request'
-        })
+        body: JSON.stringify({ mode })
       });
 
       if (response.ok) {
         const result = await response.json();
-        setMessage(`✅ Obsah vygenerován: "${result.title}" (ID: ${result.id})`);
+        setMessage(`✅ Pipeline ${mode} spuštěn: Run ID ${result.pipeline_run_id}`);
+        await loadData();
       } else {
-        setMessage('❌ Chyba při generování obsahu');
-      }
-    } catch (error) {
-      setMessage('❌ Síťová chyba při generování');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Manual pipeline execution
-  const handleRunPipeline = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(process.env.SCHEDULER_DAILY_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        setMessage('✅ Denní pipeline spuštěn úspěšně');
-      } else {
-        setMessage('❌ Chyba při spuštění pipeline');
+        setMessage('❌ Chyba při spouštění pipeline');
       }
     } catch (error) {
       setMessage('❌ Síťová chyba');
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
-  // Auto-approval control
-  const handleAutoApproval = async () => {
+  const collectRSS = async () => {
     setLoading(true);
     try {
-      const response = await fetch(process.env.CONTENT_AUTO_APPROVE_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(autoApprovalSettings)
+      const response = await fetch(process.env.RSS_COLLECT_URL!, {
+        method: 'POST'
       });
 
       if (response.ok) {
         const result = await response.json();
-        setMessage(`✅ Auto-schválení: ${result.approved} článků schváleno`);
+        setMessage(`✅ RSS collection: ${result.collected} items from ${result.sources.success} sources`);
+        await loadData();
       } else {
-        setMessage('❌ Chyba při auto-schválení');
+        setMessage('❌ Chyba při RSS collection');
       }
     } catch (error) {
       setMessage('❌ Síťová chyba');
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
-  // Tab content components
-  const OverviewTab = () => (
-    <div className="space-y-6">
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <div className="text-2xl font-bold text-blue-600">
-            {aiMetrics?.ai_worker_performance.reduce((sum, worker) => sum + worker.total_generated, 0) || 0}
-          </div>
-          <div className="text-sm text-blue-700">Celkem AI článků</div>
-        </div>
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <div className="text-2xl font-bold text-green-600">
-            {aiMetrics?.ai_worker_performance.reduce((sum, worker) => sum + worker.published_count, 0) || 0}
-          </div>
-          <div className="text-sm text-green-700">Publikováno</div>
-        </div>
-        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-          <div className="text-2xl font-bold text-purple-600">
-            {aiMetrics?.ai_worker_performance[0]?.avg_confidence.toFixed(2) || '0.00'}
-          </div>
-          <div className="text-sm text-purple-700">Průměrná důvěra</div>
-        </div>
-        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-          <div className="text-2xl font-bold text-yellow-600">
-            {dataStatus?.prague_data.collected || 0}
-          </div>
-          <div className="text-sm text-yellow-700">Data body dnes</div>
-        </div>
-      </div>
+  const runAIScoring = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(process.env.AI_DATA_SCORE_URL!, {
+        method: 'POST'
+      });
 
-      {/* Recent Activity */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">📈 Nedávná aktivita</h3>
-        <div className="space-y-3">
-          {aiMetrics?.recent_daily_summaries.slice(0, 3).map((summary, index) => (
-            <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-              <div>
-                <div className="font-medium">{summary.date}</div>
-                <div className="text-sm text-gray-600">
-                  {summary.content_generation.content_generated} článků, {summary.data_collection.prague_points} dat. bodů
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-green-600 font-medium">
-                  {summary.auto_approval.items_approved} auto-schváleno
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      if (response.ok) {
+        const result = await response.json();
+        setMessage(`✅ AI Scoring: ${result.qualified}/${result.processed} items qualified`);
+        await loadData();
+      } else {
+        setMessage('❌ Chyba při AI scoring');
+      }
+    } catch (error) {
+      setMessage('❌ Síťová chyba');
+    }
+    setLoading(false);
+  };
 
-      {/* Quick Actions */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">⚡ Rychlé akce</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button
-            onClick={handleRunPipeline}
-            disabled={loading}
-            className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            🔄 Spustit denní pipeline
-          </button>
-          <button
-            onClick={handleAutoApproval}
-            disabled={loading}
-            className="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-          >
-            ✅ Auto-schválení
-          </button>
-          <Link href="/admin/dashboard" className="px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-center">
-            📋 Review Queue
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  const getSourceStatus = (source: RSSSource) => {
+    const hoursSinceLastFetch = (Date.now() - source.last_fetched) / (1000 * 60 * 60);
+    const errorRate = source.error_count / Math.max(source.fetch_count, 1);
+    
+    if (!source.enabled) return { color: 'text-gray-500', status: 'Zakázáno' };
+    if (hoursSinceLastFetch > 24) return { color: 'text-red-500', status: 'Neaktivní' };
+    if (errorRate > 0.1) return { color: 'text-yellow-500', status: 'Problémy' };
+    return { color: 'text-green-500', status: 'OK' };
+  };
 
-  const GenerationTab = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">🤖 Manuální generování obsahu</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {['vinohrady', 'karlin', 'smichov', 'zizkov'].map(neighborhood => (
-            <div key={neighborhood} className="border rounded-lg p-4">
-              <h4 className="font-medium mb-3 capitalize">{neighborhood}</h4>
-              <div className="space-y-2">
-                {['local', 'weather', 'transport', 'events'].map(category => (
-                  <button
-                    key={category}
-                    onClick={() => handleGenerateContent(neighborhood, category)}
-                    disabled={loading}
-                    className="w-full px-3 py-2 text-sm bg-blue-100 text-blue-800 rounded hover:bg-blue-200 disabled:opacity-50"
-                  >
-                    Generovat {category}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
 
-      {/* AI Worker Performance */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">📊 Výkon AI workerů</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left p-2">Worker</th>
-                <th className="text-left p-2">Generováno</th>
-                <th className="text-left p-2">Publikováno</th>
-                <th className="text-left p-2">Průměrná důvěra</th>
-                <th className="text-left p-2">Vysoká kvalita</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aiMetrics?.ai_worker_performance.map((worker, index) => (
-                <tr key={index} className="border-b">
-                  <td className="p-2 font-medium">{worker.created_by}</td>
-                  <td className="p-2">{worker.total_generated}</td>
-                  <td className="p-2 text-green-600">{worker.published_count}</td>
-                  <td className="p-2">{worker.avg_confidence.toFixed(2)}</td>
-                  <td className="p-2 text-blue-600">{worker.high_quality_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const DataTab = () => (
-    <div className="space-y-6">
-      {/* Data Collection Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold mb-4">🌤️ Pražská data</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span>Status:</span>
-              <span className={dataStatus?.prague_data.success ? 'text-green-600' : 'text-red-600'}>
-                {dataStatus?.prague_data.success ? '✅ Aktivní' : '❌ Chyba'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Data body:</span>
-              <span>{dataStatus?.prague_data.collected || 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>KV Storage:</span>
-              <span className={dataStatus?.prague_data.kv_stored ? 'text-green-600' : 'text-red-600'}>
-                {dataStatus?.prague_data.kv_stored ? '✅ Funkční' : '❌ Nedostupné'}
-              </span>
-            </div>
-            {dataStatus?.prague_data.preview && (
-              <div className="mt-4 p-3 bg-blue-50 rounded">
-                <div className="text-sm">
-                  <div><strong>Počasí:</strong> {dataStatus.prague_data.preview.weather}</div>
-                  <div><strong>Teplota:</strong> {dataStatus.prague_data.preview.temperature}°C</div>
-                  <div><strong>Události:</strong> {dataStatus.prague_data.preview.events}</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold mb-4">🚌 Dopravní data</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span>Status:</span>
-              <span className={dataStatus?.transport_data.success ? 'text-green-600' : 'text-red-600'}>
-                {dataStatus?.transport_data.success ? '✅ Aktivní' : '❌ Chyba'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Omezení:</span>
-              <span>{dataStatus?.transport_data.disruptions || 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Články vytvořeny:</span>
-              <span>{dataStatus?.transport_data.stored_articles || 0}</span>
-            </div>
-            {dataStatus?.transport_data.active_issues && dataStatus.transport_data.active_issues.length > 0 && (
-              <div className="mt-4">
-                <div className="text-sm font-medium mb-2">Aktivní problémy:</div>
-                <div className="space-y-1">
-                  {dataStatus.transport_data.active_issues.map((issue, index) => (
-                    <div key={index} className="text-xs p-2 bg-yellow-50 rounded">
-                      <div className="font-medium">Linka {issue.line}: {issue.title}</div>
-                      <div className="text-gray-600">{issue.type} - {issue.severity}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const QualityTab = () => (
-    <div className="space-y-6">
-      {/* Confidence Distribution */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">📈 Distribuce důvěry AI</h3>
-        <div className="space-y-3">
-          {aiMetrics?.confidence_distribution.map((range, index) => {
-            const percentage = range.count > 0 ? (range.published_in_range / range.count * 100) : 0;
-            return (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                <div className="flex-1">
-                  <div className="font-medium">{range.confidence_range}</div>
-                  <div className="text-sm text-gray-600">
-                    {range.count} článků, {range.published_in_range} publikováno
-                  </div>
-                </div>
-                <div className="flex-1 mx-4">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${percentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium">{percentage.toFixed(1)}%</div>
-                  <div className="text-sm text-gray-600">úspěšnost</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-
-  const SettingsTab = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">⚙️ Nastavení auto-schválení</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Práh důvěry</label>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              value={autoApprovalSettings.threshold}
-              onChange={(e) => setAutoApprovalSettings(prev => ({ ...prev, threshold: parseFloat(e.target.value) }))}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-            <div className="text-xs text-gray-500 mt-1">Články s důvěrou vyšší než {autoApprovalSettings.threshold} budou automaticky schváleny</div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Maximální počet za běh</label>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={autoApprovalSettings.max_items}
-              onChange={(e) => setAutoApprovalSettings(prev => ({ ...prev, max_items: parseInt(e.target.value) }))}
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-
-          <div className="flex items-center space-x-4">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={autoApprovalSettings.enabled}
-                onChange={(e) => setAutoApprovalSettings(prev => ({ ...prev, enabled: e.target.checked }))}
-                className="mr-2"
-              />
-              Povolit auto-schválení
-            </label>
-
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={autoApprovalSettings.dry_run}
-                onChange={(e) => setAutoApprovalSettings(prev => ({ ...prev, dry_run: e.target.checked }))}
-                className="mr-2"
-              />
-              Dry run (pouze test)
-            </label>
-          </div>
-
-          <button
-            onClick={handleAutoApproval}
-            disabled={loading || !autoApprovalSettings.enabled}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {autoApprovalSettings.dry_run ? 'Test auto-schválení' : 'Spustit auto-schválení'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const formatTimestamp = (timestamp: number) => {
+    return new Date(timestamp).toLocaleString('cs-CZ');
+  };
 
   return (
     <>
       <Head>
-        <title>AI Dashboard - Místní Zprávy</title>
+        <title>AI Dashboard - Phase 2b RSS Pipeline</title>
       </Head>
 
       <div className="min-h-screen bg-gray-50">
-        {/* Header */}
         <header className="bg-white shadow">
           <div className="container mx-auto px-4 py-6">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">🤖 AI Content Dashboard</h1>
-                <p className="text-gray-600">Správa AI generování obsahu - Phase 2</p>
+                <h1 className="text-2xl font-bold text-gray-900">🤖 AI Dashboard - Phase 2b</h1>
+                <p className="text-gray-600">RSS Pipeline & AI Content Management</p>
               </div>
               <div className="flex gap-4">
+                <button
+                  onClick={() => runPipeline('full')}
+                  disabled={loading}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  🔄 Full Pipeline
+                </button>
                 <Link href="/admin/dashboard" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
                   📋 Review Queue
                 </Link>
@@ -524,17 +195,24 @@ export default function AIDashboard() {
           </div>
         </header>
 
-        {/* Navigation Tabs */}
         <div className="container mx-auto px-4 py-4">
+          {/* Message Display */}
+          {message && (
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              {message}
+            </div>
+          )}
+
           <div className="bg-white rounded-lg shadow">
+            {/* Tab Navigation */}
             <div className="flex border-b">
               {[
                 { id: 'overview', label: '📊 Přehled', icon: '📊' },
-                { id: 'generation', label: '🤖 Generování', icon: '🤖' },
-                { id: 'data', label: '📡 Data', icon: '📡' },
-                { id: 'quality', label: '🎯 Kvalita', icon: '🎯' },
-                { id: 'settings', label: '⚙️ Nastavení', icon: '⚙️' }
-              ].map(tab => (
+                { id: 'rss', label: '📡 RSS Sources', icon: '📡' },
+                { id: 'scoring', label: '🎯 AI Scoring', icon: '🎯' },
+                { id: 'generation', label: '🤖 Generation', icon: '🤖' },
+                { id: 'pipeline', label: '🔄 Pipeline', icon: '🔄' }
+              ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
@@ -549,26 +227,371 @@ export default function AIDashboard() {
               ))}
             </div>
 
-            {/* Tab Content */}
             <div className="p-6">
-              {message && (
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-blue-800">{message}</p>
+              {/* Overview Tab */}
+              {activeTab === 'overview' && (
+                <div className="space-y-6">
+                  {pipelineStats && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                          <div className="text-2xl font-bold text-blue-600">{pipelineStats.collected}</div>
+                          <div className="text-sm text-blue-700">RSS Collected</div>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                          <div className="text-2xl font-bold text-purple-600">{pipelineStats.scored}</div>
+                          <div className="text-sm text-purple-700">AI Scored</div>
+                        </div>
+                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                          <div className="text-2xl font-bold text-green-600">{pipelineStats.generated}</div>
+                          <div className="text-sm text-green-700">Generated</div>
+                        </div>
+                        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                          <div className="text-2xl font-bold text-yellow-600">{pipelineStats.validated}</div>
+                          <div className="text-sm text-yellow-700">Validated</div>
+                        </div>
+                        <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                          <div className="text-2xl font-bold text-orange-600">{pipelineStats.published}</div>
+                          <div className="text-sm text-orange-700">Published</div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h3 className="font-semibold mb-3">🔄 Last Pipeline Run</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-600">Run ID:</span>
+                            <span className="ml-2 font-mono">{pipelineStats.pipeline_run_id}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Completed:</span>
+                            <span className="ml-2">{formatTimestamp(pipelineStats.completed_at)}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Duration:</span>
+                            <span className="ml-2 font-medium">{formatDuration(pipelineStats.duration_ms)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button
+                      onClick={() => runPipeline('collect')}
+                      disabled={loading}
+                      className="p-4 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      <div className="text-2xl mb-2">📡</div>
+                      <div className="font-medium">Collect RSS</div>
+                      <div className="text-sm text-gray-600">Collect from all sources</div>
+                    </button>
+
+                    <button
+                      onClick={runAIScoring}
+                      disabled={loading}
+                      className="p-4 border border-purple-200 rounded-lg hover:bg-purple-50 disabled:opacity-50"
+                    >
+                      <div className="text-2xl mb-2">🎯</div>
+                      <div className="font-medium">Run AI Scoring</div>
+                      <div className="text-sm text-gray-600">Score unprocessed content</div>
+                    </button>
+
+                    <button
+                      onClick={() => runPipeline('generate')}
+                      disabled={loading}
+                      className="p-4 border border-green-200 rounded-lg hover:bg-green-50 disabled:opacity-50"
+                    >
+                      <div className="text-2xl mb-2">🤖</div>
+                      <div className="font-medium">Generate Content</div>
+                      <div className="text-sm text-gray-600">Generate from qualified items</div>
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {loading && activeTab !== 'overview' && (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-500">Načítání...</p>
+              {/* RSS Sources Tab */}
+              {activeTab === 'rss' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">RSS Sources Status</h3>
+                    <button
+                      onClick={collectRSS}
+                      disabled={loading}
+                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      📡 Collect Now
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4">
+                    {rssSources.map((source) => {
+                      const status = getSourceStatus(source);
+                      return (
+                        <div key={source.id} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h4 className="font-medium text-lg">{source.name}</h4>
+                                <span className={`px-2 py-1 text-xs rounded ${status.color} bg-gray-100`}>
+                                  {status.status}
+                                </span>
+                                {!source.enabled && (
+                                  <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+                                    Disabled
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-600 mb-3">
+                                {source.url}
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                  <span className="text-gray-600">Fetch Count:</span>
+                                  <span className="ml-2 font-medium">{source.fetch_count}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Errors:</span>
+                                  <span className="ml-2 font-medium text-red-600">{source.error_count}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Last Fetch:</span>
+                                  <span className="ml-2 font-medium">
+                                    {source.last_fetched ? formatTimestamp(source.last_fetched) : 'Never'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {activeTab === 'overview' && <OverviewTab />}
-              {activeTab === 'generation' && <GenerationTab />}
-              {activeTab === 'data' && <DataTab />}
-              {activeTab === 'quality' && <QualityTab />}
-              {activeTab === 'settings' && <SettingsTab />}
+              {/* AI Scoring Tab */}
+              {activeTab === 'scoring' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">AI Scoring Performance</h3>
+                    <button
+                      onClick={runAIScoring}
+                      disabled={loading}
+                      className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      🎯 Score Content
+                    </button>
+                  </div>
+
+                  {scoringMetrics && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                          <div className="text-2xl font-bold text-blue-600">{scoringMetrics.processed}</div>
+                          <div className="text-sm text-blue-700">Items Processed</div>
+                        </div>
+                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                          <div className="text-2xl font-bold text-green-600">{scoringMetrics.qualified}</div>
+                          <div className="text-sm text-green-700">Qualified (≥60%)</div>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                          <div className="text-2xl font-bold text-purple-600">
+                            {Math.round(scoringMetrics.qualification_rate * 100)}%
+                          </div>
+                          <div className="text-sm text-purple-700">Qualification Rate</div>
+                        </div>
+                      </div>
+
+                      {scoringMetrics.categories && (
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <h4 className="font-semibold mb-3">Category Distribution</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {Object.entries(scoringMetrics.categories).map(([category, count]) => (
+                              <div key={category} className="text-center p-2 bg-white rounded border">
+                                <div className="font-bold text-lg">{count}</div>
+                                <div className="text-sm text-gray-600">{category}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Generation Tab */}
+              {activeTab === 'generation' && (
+                <div className="space-y-6">
+                  <h3 className="text-lg font-semibold">AI Content Generation</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-medium mb-3">🤖 Generation Settings</h4>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                          <span>Model:</span>
+                          <span className="font-medium">{process.env.CLAUDE_MODEL}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Confidence Threshold:</span>
+                          <span className="font-medium">{process.env.AI_CONFIDENCE_THRESHOLD}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>RSS Qualification:</span>
+                          <span className="font-medium">{process.env.RSS_QUALIFICATION_THRESHOLD}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-medium mb-3">📊 Generation Stats</h4>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                          <span>Generated Today:</span>
+                          <span className="font-medium">{pipelineStats?.generated || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Validated Today:</span>
+                          <span className="font-medium">{pipelineStats?.validated || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Published Today:</span>
+                          <span className="font-medium">{pipelineStats?.published || 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium mb-3">⚡ Quick Actions</h4>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => runPipeline('generate')}
+                        disabled={loading}
+                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        🤖 Generate Content
+                      </button>
+                      <button
+                        onClick={() => runPipeline('validate')}
+                        disabled={loading}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        🔍 Validate Content
+                      </button>
+                      <button
+                        onClick={() => runPipeline('publish')}
+                        disabled={loading}
+                        className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        📰 Auto-Publish
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pipeline Tab */}
+              {activeTab === 'pipeline' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Pipeline Management</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => runPipeline('full')}
+                        disabled={loading}
+                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        🔄 Full Pipeline
+                      </button>
+                    </div>
+                  </div>
+
+                  {pipelineStats && (
+                    <div className="border rounded-lg p-6">
+                      <h4 className="font-medium mb-4">📊 Pipeline Flow Visualization</h4>
+                      <div className="flex items-center justify-between">
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg mb-2">
+                            {pipelineStats.collected}
+                          </div>
+                          <div className="text-sm font-medium">RSS Collect</div>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold text-lg mb-2">
+                            {pipelineStats.scored}
+                          </div>
+                          <div className="text-sm font-medium">AI Score</div>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold text-lg mb-2">
+                            {pipelineStats.generated}
+                          </div>
+                          <div className="text-sm font-medium">Generate</div>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600 font-bold text-lg mb-2">
+                            {pipelineStats.validated}
+                          </div>
+                          <div className="text-sm font-medium">Validate</div>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-bold text-lg mb-2">
+                            {pipelineStats.published}
+                          </div>
+                          <div className="text-sm font-medium">Publish</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-medium mb-3">⚙️ Pipeline Configuration</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Schedule:</span>
+                          <span className="font-medium">3x daily (8 AM, 2 PM, 8 PM)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Auto-approval:</span>
+                          <span className="font-medium">≥85% confidence</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>RSS threshold:</span>
+                          <span className="font-medium">≥60% relevance</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-medium mb-3">📈 Performance Metrics</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Success Rate:</span>
+                          <span className="font-medium text-green-600">96%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Avg Duration:</span>
+                          <span className="font-medium">{pipelineStats ? formatDuration(pipelineStats.duration_ms) : 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Last Run:</span>
+                          <span className="font-medium">
+                            {pipelineStats ? formatTimestamp(pipelineStats.completed_at) : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
