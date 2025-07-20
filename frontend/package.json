@@ -1,7 +1,7 @@
 {
   "name": "ai-news-frontend",
   "version": "2.0.0",
-  "description": "AI News Portal Frontend - Phase 2: AI Content Generation",
+  "description": "AI News Portal Frontend v2 - Complete 3-tier user experience",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +9,8 @@
     "start": "next start",
     "export": "next build && next export",
     "lint": "next lint",
-    "deploy": "npm run build && wrangler pages deploy out --project-name ai-news-frontend"
+    "deploy": "npm run export && wrangler pages deploy out --project-name ai-news-frontend",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "next": "^14.0.0",
