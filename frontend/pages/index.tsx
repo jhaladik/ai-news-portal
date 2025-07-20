@@ -1,578 +1,483 @@
-// pages/index.tsx - Enhanced homepage with Phase 2 AI features
-import Head from 'next/head';
-import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import AIContentCard from '../components/AIContentCard';
+// pages/index.tsx
+// Public landing page with content discovery and newsletter signup
 
-interface SystemStatus {
-  workers_deployed: number;
-  ai_pipeline_active: boolean;
-  content_generated_today: number;
-  avg_ai_confidence: number;
-  neighborhoods_active: number;
-  last_pipeline_run: number;
-}
+import React, { useState, useEffect } from 'react';
+import Layout, { PageWrapper } from '../components/layout/Layout';
+import { Content, Neighborhood, NewsletterSignupForm } from '../lib/types';
+import { useAuth } from '../components/auth/AuthProvider';
+import apiClient from '../lib/api-client';
+import { formatDate, formatNumber } from '../lib/utils';
+import ContentList from '../components/content/ContentList';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
+import { LoadingInline } from '../components/ui/Loading';
+import { useToastActions } from '../components/ui/Toast';
 
-interface RecentContent {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  neighborhood_id: string;
-  ai_confidence?: number;
-  created_by?: string;
-  created_at: number;
-  published_at?: number;
-  status: string;
-}
-
-interface NeighborhoodStats {
-  id: string;
-  name: string;
-  slug: string;
-  total_articles: number;
-  ai_articles: number;
-  articles_today: number;
-  avg_confidence: number;
-}
-
-export default function HomePage() {
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const [recentContent, setRecentContent] = useState<RecentContent[]>([]);
-  const [neighborhoods, setNeighborhoods] = useState<NeighborhoodStats[]>([]);
+const LandingPage: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+  const [content, setContent] = useState<Content[]>([]);
+  const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedNeighborhood, setSelectedNeighborhood] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [showSignupModal, setShowSignupModal] = useState(false);
+  const [signupForm, setSignupForm] = useState<NewsletterSignupForm>({
+    email: '',
+    neighborhood_id: '',
+    categories: ['local', 'community', 'events']
+  });
+  const [subscribing, setSubscribing] = useState(false);
+  
+  const { showSuccess, showError } = useToastActions();
 
+  // Check for signup parameter in URL
   useEffect(() => {
-    const loadHomePageData = async () => {
-      try {
-        // Load system status and recent content
-        const statusPromises = [
-          // Try to get admin stats for overview
-          fetch(`${process.env.ADMIN_REVIEW_URL}/?view=stats`).catch(() => null),
-          // Get recent content from multiple neighborhoods  
-          fetch(`${process.env.CONTENT_LIST_URL}/?status=published&limit=6`).catch(() => null),
-          // Check AI pipeline status
-          fetch(`${process.env.ADMIN_REVIEW_URL}/?view=daily_summary`).catch(() => null)
-        ];
-
-        const [statsResponse, contentResponse, pipelineResponse] = await Promise.all(statusPromises);
-
-        // Process system status
-        if (statsResponse?.ok) {
-          const statsData = await statsResponse.json();
-          // Extract relevant stats from admin data
-          const today = new Date().setHours(0, 0, 0, 0);
-          
-          setSystemStatus({
-            workers_deployed: 17, // Phase 1 (9) + Phase 2 (8)
-            ai_pipeline_active: true,
-            content_generated_today: 5, // Would be calculated from actual data
-            avg_ai_confidence: 0.82,
-            neighborhoods_active: 4,
-            last_pipeline_run: Date.now() - 3600000 // 1 hour ago
-          });
-        }
-
-        // Process recent content
-        if (contentResponse?.ok) {
-          const contentData = await contentResponse.json();
-          if (Array.isArray(contentData)) {
-            setRecentContent(contentData.slice(0, 6));
-          }
-        }
-
-        // Set demo neighborhood data
-        setNeighborhoods([
-          {
-            id: 'vinohrady',
-            name: 'Vinohrady',
-            slug: 'vinohrady',
-            total_articles: 23,
-            ai_articles: 15,
-            articles_today: 3,
-            avg_confidence: 0.87
-          },
-          {
-            id: 'karlin', 
-            name: 'Karlín',
-            slug: 'karlin',
-            total_articles: 18,
-            ai_articles: 12,
-            articles_today: 2,
-            avg_confidence: 0.82
-          },
-          {
-            id: 'smichov',
-            name: 'Smíchov', 
-            slug: 'smichov',
-            total_articles: 15,
-            ai_articles: 9,
-            articles_today: 2,
-            avg_confidence: 0.79
-          },
-          {
-            id: 'zizkov',
-            name: 'Žižkov',
-            slug: 'zizkov', 
-            total_articles: 12,
-            ai_articles: 8,
-            articles_today: 1,
-            avg_confidence: 0.84
-          }
-        ]);
-
-        // Fallback demo content if API fails
-        if (recentContent.length === 0) {
-          setRecentContent([
-            {
-              id: 'demo-1',
-              title: 'AI: Aktuální dopravní situace v Praze',
-              content: 'Veřejná doprava v Praze dnes funguje bez větších problémů. Tramvajové linky 22 a 23 jedou podle jízdního řádu, metro má mírné zpoždění na lince A kvůli technickým pracím.',
-              category: 'transport',
-              neighborhood_id: 'vinohrady',
-              ai_confidence: 0.89,
-              created_by: 'ai-generate-claude',
-              created_at: Date.now() - 1800000,
-              published_at: Date.now() - 1800000,
-              status: 'published'
-            },
-            {
-              id: 'demo-2', 
-              title: 'Nové dětské hřiště v Riegrových sadech',
-              content: 'Městská část Praha 2 slavnostně otevřela nové moderní dětské hřiště v Riegrových sadech. Hřiště nabízí bezpečné herní prvky pro děti všech věkových kategorií.',
-              category: 'community',
-              neighborhood_id: 'vinohrady',
-              ai_confidence: 0,
-              created_by: 'admin',
-              created_at: Date.now() - 7200000,
-              published_at: Date.now() - 7200000,
-              status: 'published'
-            }
-          ]);
-        }
-
-      } catch (error) {
-        console.error('Error loading homepage data:', error);
-        // Set fallback system status
-        setSystemStatus({
-          workers_deployed: 17,
-          ai_pipeline_active: true,
-          content_generated_today: 5,
-          avg_ai_confidence: 0.82,
-          neighborhoods_active: 4,
-          last_pipeline_run: Date.now() - 3600000
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadHomePageData();
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('signup') === 'true') {
+      setShowSignupModal(true);
+    }
   }, []);
 
-  // Manual pipeline trigger
-  const handleTriggerPipeline = async () => {
+  // Load published content
+  const loadContent = async (neighborhood?: string, category?: string) => {
+    setLoading(true);
     try {
-      const response = await fetch(process.env.SCHEDULER_DAILY_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+      const data = await apiClient.getPublishedContent({
+        neighborhood: neighborhood || undefined,
+        category: category || undefined,
+        limit: 20,
+        status: 'published'
       });
-      
-      if (response.ok) {
-        alert('✅ Denní AI pipeline spuštěn úspěšně');
-        window.location.reload();
-      } else {
-        alert('❌ Chyba při spuštění pipeline');
-      }
+      setContent(data.content);
     } catch (error) {
-      alert('❌ Síťová chyba');
+      console.error('Error loading content:', error);
+      showError('Failed to load content');
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <>
-      <Head>
-        <title>AI News Portal - Místní Zprávy Praha</title>
-        <meta name="description" content="AI-powered hyperlocal news platform for Prague neighborhoods. Get the latest local news generated by AI and curated by humans." />
-        <meta name="keywords" content="Prague, local news, AI content, hyperlocal, Czech news, artificial intelligence" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+  // Handle newsletter signup
+  const handleSignup = async () => {
+    if (!signupForm.email || !signupForm.neighborhood_id) {
+      showError('Please provide email and select a neighborhood');
+      return;
+    }
 
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-        {/* Hero Section */}
-        <header className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-700 to-blue-800">
-          <div className="absolute inset-0 bg-black opacity-10"></div>
-          <div className="relative container mx-auto px-4 py-16">
+    setSubscribing(true);
+    try {
+      await apiClient.subscribeToNewsletter(signupForm);
+      showSuccess('Successfully subscribed to newsletter!', 'Welcome to AI News Prague');
+      setShowSignupModal(false);
+      setSignupForm({
+        email: '',
+        neighborhood_id: '',
+        categories: ['local', 'community', 'events']
+      });
+    } catch (error) {
+      console.error('Error subscribing:', error);
+      showError('Failed to subscribe to newsletter');
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
+  // Handle filter changes
+  const handleNeighborhoodChange = (neighborhoodSlug: string) => {
+    setSelectedNeighborhood(neighborhoodSlug);
+    loadContent(neighborhoodSlug, selectedCategory);
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    loadContent(selectedNeighborhood, category);
+  };
+
+  // Toggle category in signup form
+  const toggleSignupCategory = (category: string) => {
+    setSignupForm(prev => ({
+      ...prev,
+      categories: prev.categories.includes(category)
+        ? prev.categories.filter(c => c !== category)
+        : [...prev.categories, category]
+    }));
+  };
+
+  // Load initial data
+  useEffect(() => {
+    loadContent();
+    
+    // Mock neighborhoods data - would typically be loaded from API
+    setNeighborhoods([
+      { id: '1', name: 'Vinohrady', slug: 'vinohrady', subscriber_count: 1200, status: 'active', created_at: Date.now() },
+      { id: '2', name: 'Praha 1 - Staré Město', slug: 'praha1', subscriber_count: 980, status: 'active', created_at: Date.now() },
+      { id: '3', name: 'Praha 2 - Nové Město', slug: 'praha2', subscriber_count: 1450, status: 'active', created_at: Date.now() },
+      { id: '4', name: 'Karlín', slug: 'karlin', subscriber_count: 890, status: 'active', created_at: Date.now() },
+      { id: '5', name: 'Smíchov', slug: 'smichov', subscriber_count: 756, status: 'active', created_at: Date.now() },
+      { id: '6', name: 'Holešovice', slug: 'holesovice', subscriber_count: 634, status: 'active', created_at: Date.now() },
+      { id: '7', name: 'Břevnov', slug: 'brevnov', subscriber_count: 423, status: 'active', created_at: Date.now() },
+      { id: '8', name: 'Dejvice', slug: 'dejvice', subscriber_count: 567, status: 'active', created_at: Date.now() }
+    ]);
+  }, []);
+
+  const categories = [
+    { id: 'emergency', name: 'Emergency', color: 'bg-red-500', description: 'Critical alerts and safety information' },
+    { id: 'local', name: 'Local News', color: 'bg-blue-500', description: 'General neighborhood news and updates' },
+    { id: 'business', name: 'Business', color: 'bg-green-500', description: 'Local business news and economic updates' },
+    { id: 'community', name: 'Community', color: 'bg-purple-500', description: 'Community events and social activities' },
+    { id: 'events', name: 'Events', color: 'bg-orange-500', description: 'Concerts, festivals, and cultural events' }
+  ];
+
+  return (
+    <Layout 
+      title="AI News Prague - Hyperlocal News for Prague Neighborhoods"
+      description="Stay informed about your Prague neighborhood with AI-curated local news, events, and community updates delivered directly to your inbox."
+    >
+      {/* Hero Section */}
+      <section className="bg-gradient-to-br from-blue-600 via-blue-700 to-purple-800 text-white">
+        <PageWrapper maxWidth="xl" padding={false}>
+          <div className="px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
             <div className="text-center">
-              <div className="inline-flex items-center gap-2 bg-blue-500 bg-opacity-20 backdrop-blur-sm rounded-full px-4 py-2 mb-6">
-                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                <span className="text-blue-100 text-sm font-medium">🤖 Phase 2: AI Content Generation ACTIVE</span>
-              </div>
-              
-              <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">
-                AI News Portal
-                <span className="block text-blue-200 text-2xl md:text-3xl font-normal mt-2">
-                  Místní Zprávy Praha
-                </span>
+              <h1 className="text-4xl md:text-6xl font-bold mb-6">
+                Your Prague Neighborhood,
+                <br />
+                <span className="text-blue-200">AI-Curated</span>
               </h1>
               
-              <p className="text-xl text-blue-100 mb-8 max-w-3xl mx-auto leading-relaxed">
-                Hyperlocal news platform powered by artificial intelligence. 
-                Get relevant, timely news for your Prague neighborhood, 
-                generated by AI and validated by humans.
+              <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-3xl mx-auto">
+                Get hyperlocal news, events, and community updates for your specific Prague neighborhood, 
+                powered by artificial intelligence and delivered straight to your inbox.
               </p>
 
-              {/* System Status Bar */}
-              {systemStatus && (
-                <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 mb-8 max-w-4xl mx-auto">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div>
-                      <div className="text-2xl font-bold text-white">{systemStatus.workers_deployed}</div>
-                      <div className="text-blue-200 text-sm">Micro-workers</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-green-300">{systemStatus.content_generated_today}</div>
-                      <div className="text-blue-200 text-sm">AI články dnes</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-yellow-300">{(systemStatus.avg_ai_confidence * 100).toFixed(0)}%</div>
-                      <div className="text-blue-200 text-sm">AI důvěra</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-purple-300">{systemStatus.neighborhoods_active}</div>
-                      <div className="text-blue-200 text-sm">Aktivní čtvrtě</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/admin/ai-dashboard" className="px-8 py-4 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold shadow-lg">
-                  🤖 AI Dashboard
-                </Link>
-                <Link href="/admin/dashboard" className="px-8 py-4 bg-blue-500 bg-opacity-20 backdrop-blur-sm text-white rounded-lg hover:bg-opacity-30 transition-colors font-semibold border border-white border-opacity-20">
-                  📋 Admin Panel
-                </Link>
-                <button
-                  onClick={handleTriggerPipeline}
-                  className="px-8 py-4 bg-green-500 bg-opacity-20 backdrop-blur-sm text-white rounded-lg hover:bg-opacity-30 transition-colors font-semibold border border-white border-opacity-20"
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => setShowSignupModal(true)}
+                  className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-4 text-lg"
                 >
-                  ⚡ Spustit AI Pipeline
-                </button>
+                  Subscribe to Newsletter
+                </Button>
+                
+                {!isAuthenticated && (
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    onClick={() => window.location.href = '/login'}
+                    className="text-white border-white hover:bg-white hover:text-blue-600 px-8 py-4 text-lg"
+                  >
+                    Sign In
+                  </Button>
+                )}
+              </div>
+
+              {/* Statistics */}
+              <div className="grid grid-cols-3 gap-8 mt-16 pt-8 border-t border-blue-500">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-200">{neighborhoods.length}</div>
+                  <div className="text-blue-100 text-sm">Neighborhoods</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-200">106+</div>
+                  <div className="text-blue-100 text-sm">News Articles</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-200">
+                    {formatNumber(neighborhoods.reduce((sum, n) => sum + n.subscriber_count, 0))}
+                  </div>
+                  <div className="text-blue-100 text-sm">Subscribers</div>
+                </div>
               </div>
             </div>
           </div>
-        </header>
+        </PageWrapper>
+      </section>
 
-        {/* Neighborhoods Section */}
-        <section className="py-16 bg-white">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">📍 Dostupné čtvrti</h2>
-              <p className="text-gray-600 max-w-2xl mx-auto">
-                Vyberte si svou čtvrť a získejte nejnovější místní informace. 
-                Kombinace AI generovaného obsahu s lidskou kontrolou kvality.
+      {/* Features Section */}
+      <section className="py-16 bg-gray-50">
+        <PageWrapper maxWidth="xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Hyperlocal News, Powered by AI
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Our AI system automatically collects, filters, and curates news specifically for your Prague neighborhood.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Curation</h3>
+              <p className="text-gray-600">
+                Our intelligent system automatically selects the most relevant news for your specific neighborhood.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {neighborhoods.map((neighborhood) => (
-                <Link
-                  key={neighborhood.id}
-                  href={`/${neighborhood.slug}`}
-                  className="group bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 hover:shadow-lg transition-all duration-300 border border-gray-200 hover:border-blue-300"
-                >
-                  <div className="text-center">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
-                      {neighborhood.name}
-                    </h3>
-                    
-                    <div className="space-y-2 text-sm text-gray-600">
-                      <div className="flex justify-between">
-                        <span>Celkem článků:</span>
-                        <span className="font-semibold">{neighborhood.total_articles}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>🤖 AI generované:</span>
-                        <span className="font-semibold text-blue-600">{neighborhood.ai_articles}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>📅 Dnes:</span>
-                        <span className="font-semibold text-green-600">{neighborhood.articles_today}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>🎯 AI důvěra:</span>
-                        <span className="font-semibold text-purple-600">
-                          {(neighborhood.avg_confidence * 100).toFixed(0)}%
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Hyperlocal Focus</h3>
+              <p className="text-gray-600">
+                Get news that matters to your specific Prague neighborhood, from Vinohrady to Karlín.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 3.26a2 2 0 001.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Regular Updates</h3>
+              <p className="text-gray-600">
+                Choose your notification frequency - daily, weekly, or monthly newsletters delivered to your inbox.
+              </p>
+            </div>
+          </div>
+        </PageWrapper>
+      </section>
+
+      {/* Content Discovery */}
+      <section className="py-16">
+        <PageWrapper maxWidth="xl">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Latest News</h2>
+              <p className="text-gray-600">
+                Discover what's happening in Prague neighborhoods right now
+              </p>
+            </div>
+            
+            {isAuthenticated && (
+              <Button
+                variant="primary"
+                onClick={() => window.location.href = '/dashboard'}
+              >
+                View Your Dashboard
+              </Button>
+            )}
+          </div>
+
+          {/* Filters */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            {/* Neighborhood Filter */}
+            <div>
+              <Card title="Neighborhoods" padding="sm">
+                <div className="space-y-2">
+                  <button
+                    onClick={() => handleNeighborhoodChange('')}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      selectedNeighborhood === ''
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    All Neighborhoods
+                  </button>
+                  {neighborhoods.map((neighborhood) => (
+                    <button
+                      key={neighborhood.id}
+                      onClick={() => handleNeighborhoodChange(neighborhood.slug)}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        selectedNeighborhood === neighborhood.slug
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{neighborhood.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {formatNumber(neighborhood.subscriber_count)}
                         </span>
                       </div>
-                    </div>
+                    </button>
+                  ))}
+                </div>
+              </Card>
 
-                    <div className="mt-4 px-4 py-2 bg-blue-100 text-blue-800 rounded-lg text-sm font-medium group-hover:bg-blue-200 transition-colors">
-                      Zobrazit zprávy →
+              {/* Category Filter */}
+              <Card title="Categories" padding="sm" className="mt-4">
+                <div className="space-y-2">
+                  <button
+                    onClick={() => handleCategoryChange('')}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      selectedCategory === ''
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    All Categories
+                  </button>
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => handleCategoryChange(category.id)}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        selectedCategory === category.id
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-3 h-3 rounded-full ${category.color}`} />
+                        <span>{category.name}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            </div>
+
+            {/* Content List */}
+            <div className="lg:col-span-3">
+              {loading ? (
+                <LoadingInline message="Loading latest news..." />
+              ) : (
+                <ContentList
+                  content={content}
+                  loading={loading}
+                  variant="default"
+                  searchable={true}
+                  sortable={true}
+                  emptyMessage="No news found for this selection"
+                  emptyAction={{
+                    label: 'Subscribe for Updates',
+                    onClick: () => setShowSignupModal(true)
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </PageWrapper>
+      </section>
+
+      {/* Newsletter CTA */}
+      <section className="bg-blue-600 text-white py-16">
+        <PageWrapper maxWidth="lg">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold mb-4">
+              Never Miss Local News Again
+            </h2>
+            <p className="text-xl text-blue-100 mb-8">
+              Join thousands of Prague residents staying informed about their neighborhoods
+            </p>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => setShowSignupModal(true)}
+              className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-4 text-lg"
+            >
+              Subscribe for Free
+            </Button>
+          </div>
+        </PageWrapper>
+      </section>
+
+      {/* Newsletter Signup Modal */}
+      <Modal
+        isOpen={showSignupModal}
+        onClose={() => setShowSignupModal(false)}
+        title="Subscribe to Newsletter"
+        size="lg"
+      >
+        <div className="space-y-6">
+          <div className="text-center">
+            <p className="text-gray-600">
+              Get hyperlocal news and updates delivered to your inbox. Choose your neighborhood and interests below.
+            </p>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={signupForm.email}
+              onChange={(e) => setSignupForm(prev => ({ ...prev, email: e.target.value }))}
+              placeholder="your-email@example.com"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            />
+          </div>
+
+          {/* Neighborhood */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Primary Neighborhood
+            </label>
+            <select
+              value={signupForm.neighborhood_id}
+              onChange={(e) => setSignupForm(prev => ({ ...prev, neighborhood_id: e.target.value }))}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            >
+              <option value="">Select your neighborhood...</option>
+              {neighborhoods.map((neighborhood) => (
+                <option key={neighborhood.id} value={neighborhood.id}>
+                  {neighborhood.name} ({formatNumber(neighborhood.subscriber_count)} subscribers)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Categories */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Content Interests (select all that apply)
+            </label>
+            <div className="space-y-3">
+              {categories.map((category) => (
+                <label key={category.id} className="flex items-start space-x-3">
+                  <input
+                    type="checkbox"
+                    checked={signupForm.categories.includes(category.id)}
+                    onChange={() => toggleSignupCategory(category.id)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-1"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${category.color}`} />
+                      <span className="text-sm font-medium text-gray-900">{category.name}</span>
                     </div>
+                    <div className="text-sm text-gray-600 mt-1">{category.description}</div>
                   </div>
-                </Link>
+                </label>
               ))}
             </div>
           </div>
-        </section>
 
-        {/* Recent Content Section */}
-        <section className="py-16 bg-gray-50">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">📰 Nejnovější zprávy</h2>
-              <p className="text-gray-600 max-w-2xl mx-auto">
-                Aktuální obsah z vašich čtvrtí. Sledujte značky AI pro rozpoznání automaticky generovaného obsahu.
-              </p>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-500">Načítání nejnovějších zpráv...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {recentContent.map((article) => (
-                  <AIContentCard
-                    key={article.id}
-                    id={article.id}
-                    title={article.title}
-                    content={article.content}
-                    category={article.category}
-                    neighborhood={neighborhoods.find(n => n.id === article.neighborhood_id)?.name || article.neighborhood_id}
-                    ai_confidence={article.ai_confidence}
-                    created_by={article.created_by}
-                    created_at={article.created_at}
-                    published_at={article.published_at}
-                    status={article.status}
-                    showAIBadge={true}
-                    showActions={false}
-                  />
-                ))}
-              </div>
-            )}
-
-            <div className="text-center mt-12">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-lg mx-auto">
-                <Link href="/admin/ai-dashboard" className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                  🤖 Spravovat AI obsah
-                </Link>
-                <Link href="/admin/dashboard" className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
-                  📋 Review Queue
-                </Link>
-              </div>
-            </div>
+          {/* Actions */}
+          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+            <Button
+              variant="ghost"
+              onClick={() => setShowSignupModal(false)}
+              disabled={subscribing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSignup}
+              loading={subscribing}
+              disabled={!signupForm.email || !signupForm.neighborhood_id || signupForm.categories.length === 0}
+            >
+              Subscribe
+            </Button>
           </div>
-        </section>
-
-        {/* AI Features Section */}
-        <section className="py-16 bg-white">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">🤖 AI Content Features</h2>
-              <p className="text-gray-600 max-w-2xl mx-auto">
-                Pokročilé funkce umělé inteligence pro automatické vytváření a správu lokálního obsahu.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {/* Automated Content Generation */}
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-                <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-white text-xl">🤖</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Automatické generování</h3>
-                <p className="text-gray-600 mb-4">
-                  AI systém automaticky vytváří relevantní místní obsah na základě dat z Prahy, 
-                  včetně počasí, dopravy a místních událostí.
-                </p>
-                <div className="text-sm text-blue-600 font-medium">
-                  ✅ Claude Sonnet 4 • ✅ Česky • ✅ Lokální kontext
-                </div>
-              </div>
-
-              {/* Quality Control */}
-              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
-                <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-white text-xl">🎯</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Kontrola kvality</h3>
-                <p className="text-gray-600 mb-4">
-                  Víceúrovňové hodnocení kvality s automatickým skórováním důvěry. 
-                  Vysoká kvalita (≥85%) se automaticky schvaluje.
-                </p>
-                <div className="text-sm text-green-600 font-medium">
-                  ✅ Auto-validace • ✅ Konfidenční skóre • ✅ Lidská kontrola
-                </div>
-              </div>
-
-              {/* Data Integration */}
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
-                <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-white text-xl">📡</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Datová integrace</h3>
-                <p className="text-gray-600 mb-4">
-                  Živé napojení na pražské API systémy pro aktuální informace o počasí, 
-                  dopravě a městských službách.
-                </p>
-                <div className="text-sm text-purple-600 font-medium">
-                  ✅ Prague API • ✅ DPP transport • ✅ Real-time data
-                </div>
-              </div>
-
-              {/* Performance Analytics */}
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-6 border border-yellow-200">
-                <div className="w-12 h-12 bg-yellow-600 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-white text-xl">📊</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Výkonové analýzy</h3>
-                <p className="text-gray-600 mb-4">
-                  Sledování výkonnosti AI systému, analýza kvality obsahu 
-                  a optimalizace pro lepší výsledky.
-                </p>
-                <div className="text-sm text-yellow-600 font-medium">
-                  ✅ AI metriky • ✅ Trendy kvality • ✅ Optimalizace
-                </div>
-              </div>
-
-              {/* Automated Workflows */}
-              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
-                <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-white text-xl">⚡</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Automatizované workflow</h3>
-                <p className="text-gray-600 mb-4">
-                  Denní pipeline automaticky sbírá data, generuje obsah, 
-                  validuje kvalitu a publikuje schválené články.
-                </p>
-                <div className="text-sm text-red-600 font-medium">
-                  ✅ Daily cron • ✅ Auto-approval • ✅ Batch operations
-                </div>
-              </div>
-
-              {/* Multi-neighborhood Support */}
-              <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-6 border border-indigo-200">
-                <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-white text-xl">🏘️</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Multi-čtvrťová podpora</h3>
-                <p className="text-gray-600 mb-4">
-                  Škálovatelný systém podporuje neomezený počet pražských čtvrtí 
-                  s personalizovaným obsahem pro každou oblast.
-                </p>
-                <div className="text-sm text-indigo-600 font-medium">
-                  ✅ Škálovatelné • ✅ Lokalizované • ✅ Personalizované
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Technical Status Section */}
-        <section className="py-16 bg-gray-900 text-white">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold mb-4">⚙️ Technický stav systému</h2>
-              <p className="text-gray-300 max-w-2xl mx-auto">
-                Aktuální status všech komponent AI News Portal platformy.
-              </p>
-            </div>
-
-            {systemStatus && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-gray-300">Pipeline Status</span>
-                    <span className="w-3 h-3 bg-green-400 rounded-full"></span>
-                  </div>
-                  <div className="text-2xl font-bold text-green-400">ACTIVE</div>
-                  <div className="text-sm text-gray-400">
-                    Last run: {new Date(systemStatus.last_pipeline_run).toLocaleTimeString('cs-CZ')}
-                  </div>
-                </div>
-
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-gray-300">Micro-workers</span>
-                    <span className="w-3 h-3 bg-blue-400 rounded-full"></span>
-                  </div>
-                  <div className="text-2xl font-bold text-blue-400">{systemStatus.workers_deployed}/17</div>
-                  <div className="text-sm text-gray-400">
-                    Phase 2 deployed
-                  </div>
-                </div>
-
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-gray-300">AI Quality</span>
-                    <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
-                  </div>
-                  <div className="text-2xl font-bold text-yellow-400">
-                    {(systemStatus.avg_ai_confidence * 100).toFixed(0)}%
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    Average confidence
-                  </div>
-                </div>
-
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-gray-300">Coverage</span>
-                    <span className="w-3 h-3 bg-purple-400 rounded-full"></span>
-                  </div>
-                  <div className="text-2xl font-bold text-purple-400">{systemStatus.neighborhoods_active}</div>
-                  <div className="text-sm text-gray-400">
-                    Active neighborhoods
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-8 text-center">
-              <div className="text-sm text-gray-400 mb-4">
-                🚀 Phase 2: AI Content Generation • Built with Claude Sonnet 4 • Micro-worker Architecture
-              </div>
-              <div className="flex justify-center gap-4">
-                <Link href="/admin/ai-dashboard" className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors">
-                  🤖 AI Dashboard
-                </Link>
-                <Link href="/admin/dashboard" className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600 transition-colors">
-                  📋 Admin Panel
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="bg-gray-50 py-8 border-t border-gray-200">
-          <div className="container mx-auto px-4 text-center">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">AI News Portal</h3>
-              <p className="text-gray-600">
-                Hyperlocal news powered by artificial intelligence • Prague, Czech Republic
-              </p>
-            </div>
-            
-            <div className="flex justify-center gap-6 text-sm text-gray-500">
-              <span>📧 GDPR Compliant</span>
-              <span>🤖 AI Transparency</span>
-              <span>🔒 Privacy Focused</span>
-              <span>⚡ Real-time Updates</span>
-            </div>
-            
-            <div className="mt-4 text-xs text-gray-400">
-              Phase 2: AI Content Generation • Micro-worker Architecture • Built with ❤️ for Prague
-            </div>
-          </div>
-        </footer>
-      </div>
-    </>
+        </div>
+      </Modal>
+    </Layout>
   );
-}
+};
+
+export default LandingPage;
