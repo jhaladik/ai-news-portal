@@ -61,14 +61,25 @@ export default {
           closures: Math.random() > 0.7 ? 'Uzavírka Blanická ulice' : null
         };
         collectedData.dataPoints++;
-  
+        
         // Store collected data in KV for AI processing
         await env.AI_NEWS_KV.put(
           `prague-data-${Date.now()}`, 
           JSON.stringify(collectedData),
           { expirationTtl: 86400 } // 24 hours
         );
-  
+
+        console.log('About to store in KV:', collectedData);
+        try {
+          await env.AI_NEWS_KV.put(
+            `prague-data-${Date.now()}`, 
+            JSON.stringify(collectedData),
+            { expirationTtl: 86400 }
+          );
+          console.log('KV storage successful');
+        } catch (error) {
+          console.error('KV storage failed:', error);
+        }        
         return Response.json({
           success: true,
           collected: collectedData.dataPoints,

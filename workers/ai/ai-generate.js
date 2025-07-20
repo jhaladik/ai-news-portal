@@ -17,14 +17,23 @@ export default {
       }
   
       try {
+        // In workers/ai/ai-generate.js, replace lines 20-35 with:
         const { data, neighborhood, category, type = 'auto' } = await request.json();
-  
+
         if (!neighborhood || !category) {
           return Response.json({
             error: 'Missing required fields: neighborhood, category'
           }, { status: 400, headers: corsHeaders });
         }
-  
+
+        // FIXED: Create new variable instead of reassigning const
+        let contextData = data || {};
+        const pragueDataKeys = await env.AI_NEWS_KV.list({ prefix: 'prague-data-' });
+        if (pragueDataKeys.keys.length > 0) {
+            const latestKey = pragueDataKeys.keys[0].name;
+            const pragueData = await env.AI_NEWS_KV.get(latestKey);
+            contextData = { ...contextData, ...JSON.parse(pragueData) };
+        }
         // Check if we have Claude API access or should use fallback
         const useClaudeAPI = env.CLAUDE_API_KEY && env.CLAUDE_API_KEY !== 'demo';
         
