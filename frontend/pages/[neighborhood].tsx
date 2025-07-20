@@ -49,7 +49,7 @@ export default function NeighborhoodNews() {
         
         if (response.ok) {
           const data = await response.json();
-          setArticles(data || []);
+          setArticles(data?.articles || []);
           
           // Calculate stats
           const today = new Date().setHours(0, 0, 0, 0);
@@ -118,7 +118,7 @@ export default function NeighborhoodNews() {
   }, [neighborhood]);
 
   // Filter articles based on selected filters
-  const filteredArticles = articles.filter(article => {
+  const filteredArticles = (articles || []).filter(article => {
     // AI/Manual filter
     if (filter === 'ai' && (!article.created_by?.includes('ai') && article.ai_confidence === 0)) return false;
     if (filter === 'manual' && (article.created_by?.includes('ai') || article.ai_confidence > 0)) return false;
@@ -142,7 +142,7 @@ export default function NeighborhoodNews() {
   };
 
   // Get categories available
-  const availableCategories = Array.from(new Set(articles.map(article => article.category)));
+  const availableCategories = Array.from(new Set((articles || []).map(article => article.category)));
 
   if (!neighborhood) {
     return <div>Loading...</div>;
@@ -340,4 +340,42 @@ export default function NeighborhoodNews() {
       </div>
     </>
   );
+}
+// Add these functions to the bottom of your frontend/pages/[neighborhood].tsx file
+
+export async function getStaticPaths() {
+  // Define all neighborhoods that should be pre-generated
+  const neighborhoods = ['vinohrady', 'karlin', 'smichov', 'zizkov'];
+  
+  const paths = neighborhoods.map((neighborhood) => ({
+    params: { neighborhood }
+  }));
+
+  return {
+    paths,
+    fallback: false // Set to true if you want to generate pages on-demand
+  };
+}
+
+export async function getStaticProps({ params }) {
+  // This will run at build time for each neighborhood
+  const neighborhood = params.neighborhood;
+  
+  try {
+    // You can pre-fetch data here if needed
+    // For now, just pass the neighborhood parameter
+    return {
+      props: {
+        neighborhood,
+        // Add any other static props you want to pre-generate
+      },
+    };
+  } catch (error) {
+    console.error('Error in getStaticProps:', error);
+    return {
+      props: {
+        neighborhood,
+      },
+    };
+  }
 }
