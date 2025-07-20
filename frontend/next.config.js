@@ -32,6 +32,7 @@ const nextConfig = {
     
     // Phase 2b: NEW RSS Pipeline workers
     RSS_COLLECT_URL: 'https://rss-collect.jhaladik.workers.dev',
+    RSS_SOURCES_MANAGEMENT_URL: 'https://rss-sources-management.jhaladik.workers.dev', // NEW - for CRUD operations
     AI_DATA_SCORE_URL: 'https://ai-data-score.jhaladik.workers.dev',
     CONTENT_PUBLISH_URL: 'https://content-publish.jhaladik.workers.dev',
     PIPELINE_ORCHESTRATOR_URL: 'https://pipeline-orchestrator.jhaladik.workers.dev',
