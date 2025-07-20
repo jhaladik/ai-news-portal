@@ -234,97 +234,98 @@ const NewsletterArchiveComponent: React.FC<NewsletterArchiveProps> = ({ classNam
         </Card>
       </div>
 
-      {/* Newsletter List */}
-      {newsletters.length > 0 ? (
+        {/* Newsletter List */}
+        {newsletters.length > 0 ? (
         <div className="space-y-4">
-          {newsletters.map((newsletter) => (
-            <Card 
-              key={newsletter.id} 
-              className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+            {newsletters.map((newsletter) => (
+            <div
+                key={newsletter.id}
+                className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
                 !newsletter.opened_at ? 'border-blue-200 bg-blue-50' : 'hover:bg-gray-50'
-              }`}
-              onClick={() => selectNewsletter(newsletter)}
+                }`}
+                onClick={() => selectNewsletter(newsletter)}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  {/* Header */}
-                  <div className="flex items-center space-x-2 mb-2">
-                    {!newsletter.opened_at && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                        New
-                      </span>
-                    )}
-                    
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                      {newsletter.neighborhood_name}
-                    </span>
-                    
-                    <span className="text-sm text-gray-500">
-                      {formatDate(newsletter.sent_at, { relative: true })}
-                    </span>
-                  </div>
+                <Card>
+                <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                    {/* Header */}
+                    <div className="flex items-center space-x-2 mb-2">
+                        {!newsletter.opened_at && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            New
+                        </span>
+                        )}
+                        
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                        {newsletter.neighborhood_name}
+                        </span>
+                        
+                        <span className="text-sm text-gray-500">
+                        {formatDate(newsletter.sent_at, { relative: true })}
+                        </span>
+                    </div>
 
-                  {/* Subject */}
-                  <h3 className={`text-lg leading-tight mb-2 ${
-                    !newsletter.opened_at ? 'font-semibold text-gray-900' : 'font-medium text-gray-800'
-                  }`}>
-                    {newsletter.subject}
-                  </h3>
+                    {/* Subject */}
+                    <h3 className={`text-lg leading-tight mb-2 ${
+                        !newsletter.opened_at ? 'font-semibold text-gray-900' : 'font-medium text-gray-800'
+                    }`}>
+                        {newsletter.subject}
+                    </h3>
 
-                  {/* Preview */}
-                  <p className="text-gray-600 text-sm line-clamp-2">
-                    {newsletter.content_preview}
-                  </p>
+                    {/* Preview */}
+                    <p className="text-gray-600 text-sm line-clamp-2">
+                        {newsletter.content_preview}
+                    </p>
 
-                  {/* Engagement Indicators */}
-                  <div className="flex items-center space-x-4 mt-3 text-xs text-gray-500">
-                    {newsletter.opened_at && (
-                      <span className="flex items-center space-x-1">
-                        <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    {/* Engagement Indicators */}
+                    <div className="flex items-center space-x-4 mt-3 text-xs text-gray-500">
+                        {newsletter.opened_at && (
+                        <span className="flex items-center space-x-1">
+                            <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <span>Opened {timeAgo(newsletter.opened_at)}</span>
+                        </span>
+                        )}
+                        
+                        {newsletter.clicked_at && (
+                        <span className="flex items-center space-x-1">
+                            <svg className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                            </svg>
+                            <span>Clicked {timeAgo(newsletter.clicked_at)}</span>
+                        </span>
+                        )}
+                    </div>
+                    </div>
+
+                    {/* Action Icons */}
+                    <div className="flex items-center space-x-2 ml-4">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                            trackClick(newsletter);
+                            // Here you would typically open the newsletter in a new tab
+                            // For now, we'll just track the click
+                            showSuccess('Newsletter interaction tracked');
+                        }}
+                        disabled={trackingActions.has(`${newsletter.id}-click`)}
+                        >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
-                        <span>Opened {timeAgo(newsletter.opened_at)}</span>
-                      </span>
-                    )}
+                    </Button>
                     
-                    {newsletter.clicked_at && (
-                      <span className="flex items-center space-x-1">
-                        <svg className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                        </svg>
-                        <span>Clicked {timeAgo(newsletter.clicked_at)}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Icons */}
-                <div className="flex items-center space-x-2 ml-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      trackClick(newsletter);
-                      // Here you would typically open the newsletter in a new tab
-                      // For now, we'll just track the click
-                      showSuccess('Newsletter interaction tracked');
-                    }}
-                    disabled={trackingActions.has(`${newsletter.id}-click`)}
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                  </Button>
-                  
-                  <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+                    </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            </div>
+        ))}
 
           {/* Load More */}
           {pagination?.has_next && (

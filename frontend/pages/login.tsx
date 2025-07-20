@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/layout/Layout';
 import { AuthManager } from '../lib/auth';
+import apiClient from '../lib/api-client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,9 +20,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     // Redirect if already logged in
-    if (authManager.isLoggedIn()) {
-      const role = authManager.getUserRole();
-      if (role === 'admin') {
+    if (authManager.isAuthenticated()) {
+      if (authManager.isAdmin()) {
         router.push('/admin');
       } else {
         router.push('/dashboard');
@@ -44,9 +44,16 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const result = await authManager.login(formData.email, formData.password);
+      // Use API client to authenticate
+      const result = await apiClient.login({
+        email: formData.email,
+        password: formData.password
+      });
       
-      if (result.success) {
+      if (result.token && result.user) {
+        // Store in auth manager
+        authManager.login(result.token, result.user);
+        
         // Redirect based on user role
         if (result.user.role === 'admin') {
           router.push('/admin');
@@ -54,7 +61,7 @@ export default function LoginPage() {
           router.push('/dashboard');
         }
       } else {
-        setError(result.error || 'Login failed. Please try again.');
+        setError('Login failed. Please try again.');
       }
     } catch (error) {
       setError('Network error. Please check your connection and try again.');
@@ -83,8 +90,13 @@ export default function LoginPage() {
 
       if (response.ok) {
         // Auto-login after successful registration
-        const loginResult = await authManager.login(formData.email, formData.password);
-        if (loginResult.success) {
+        const loginResult = await apiClient.login({
+          email: formData.email,
+          password: formData.password
+        });
+        
+        if (loginResult.token && loginResult.user) {
+          authManager.login(loginResult.token, loginResult.user);
           router.push('/dashboard');
         }
       } else {
@@ -98,7 +110,7 @@ export default function LoginPage() {
   };
 
   return (
-    <Layout showNavigation={false}>
+    <Layout showFooter={false}>
       <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="text-center">
@@ -198,7 +210,7 @@ export default function LoginPage() {
                 </div>
                 <div className="relative flex justify-center text-sm">
                   <span className="px-2 bg-white text-gray-500">
-                    {isRegistering ? 'Already have an account?' : "Don't have an account?"}
+                    {isRegistering ? 'Already have an account?' : "Don&apos;t have an account?"}
                   </span>
                 </div>
               </div>

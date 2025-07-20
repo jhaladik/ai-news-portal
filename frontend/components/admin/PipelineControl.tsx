@@ -280,7 +280,7 @@ const PipelineControl: React.FC<PipelineControlProps> = ({ className = '' }) => 
               {formatNumber(pipelineStatus.processing_stats.items_per_hour)} items/hour
             </div>
             <div className="text-sm text-gray-500">
-              {formatPercentage(pipelineStatus.processing_stats.success_rate)} success rate
+                {Math.round(pipelineStatus.processing_stats.success_rate * 100)}% success rate  
             </div>
           </div>
         </div>

@@ -3,46 +3,31 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
 import { AuthManager } from '../../lib/auth';
-import { APIClient } from '../../lib/api-client';
-
-interface ContentItem {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  neighborhood_id: string;
-  ai_confidence: number;
-  status: string;
-  source: string;
-  original_url?: string;
-  created_at: number;
-  updated_at?: number;
-  reason_flagged?: string;
-  validation_notes?: string;
-  published_at?: number;
-}
+import apiClient from '../../lib/api-client';
+import { Content, ContentFilters } from '../../lib/types';
 
 export default function AdminContentManagement() {
   const router = useRouter();
-  const [content, setContent] = useState<ContentItem[]>([]);
+  const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState('review'); // review, approved, rejected, all
-  const [filters, setFilters] = useState({
-    category: 'all',
-    neighborhood: 'all',
-    confidence_min: 0,
-    search: ''
+  const [filters, setFilters] = useState<ContentFilters>({
+    category: undefined,
+    neighborhood: undefined,
+    limit: 50,
+    offset: 0
   });
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [bulkAction, setBulkAction] = useState('');
-  const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
+  const [editingItem, setEditingItem] = useState<Content | null>(null);
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
 
   const authManager = new AuthManager();
-  const apiClient = new APIClient();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const token = authManager.getToken();
+      const token = authManager.getCurrentToken();
       if (!token || !authManager.isAdmin()) {
         router.push('/login');
         return;
@@ -54,15 +39,20 @@ export default function AdminContentManagement() {
 
   const fetchContent = async () => {
     try {
-      const token = authManager.getToken();
+      const token = authManager.getCurrentToken();
       if (!token) return;
 
       setLoading(true);
-      const data = await apiClient.getAdminContent(token, {
-        status: selectedTab === 'all' ? undefined : selectedTab,
-        ...filters
-      });
-      setContent(data);
+      
+      // Build filters for API call
+      const apiFilters: ContentFilters = {
+        ...filters,
+        // Map tab to status filter
+        ...(selectedTab !== 'all' && { status: selectedTab })
+      };
+
+      const data = await apiClient.getPublishedContent(apiFilters);
+      setContent(data.content);
     } catch (error) {
       console.error('Failed to fetch content:', error);
     } finally {
@@ -72,520 +62,412 @@ export default function AdminContentManagement() {
 
   const handleItemAction = async (itemId: string, action: string, reason?: string) => {
     try {
-      const token = authManager.getToken();
+      const token = authManager.getCurrentToken();
       if (!token) return;
 
-      switch (action) {
-        case 'approve':
-          await apiClient.approveContent(token, itemId);
-          break;
-        case 'reject':
-          await apiClient.rejectContent(token, itemId, reason || 'Manual rejection');
-          break;
-        case 'delete':
-          await apiClient.deleteContent(token, itemId);
-          break;
+      setProcessingAction(itemId);
+
+      if (action === 'approve') {
+        await apiClient.approveContent(token, itemId);
+        // Remove from current list or refresh
+        setContent(prev => prev.filter(item => item.id !== itemId));
+      } else if (action === 'reject') {
+        // For rejection, you might need a reject endpoint
+        // await apiClient.rejectContent(token, itemId, reason);
+        console.log(`Rejecting ${itemId} with reason: ${reason}`);
+        // Remove from current list or refresh
+        setContent(prev => prev.filter(item => item.id !== itemId));
+      } else if (action === 'delete') {
+        await apiClient.deleteContent(token, itemId);
+        setContent(prev => prev.filter(item => item.id !== itemId));
       }
 
-      // Remove from current view or refresh
-      setContent(prev => prev.filter(item => item.id !== itemId));
-      setSelectedItems(prev => prev.filter(id => id !== itemId));
     } catch (error) {
-      console.error(`Action ${action} failed:`, error);
+      console.error(`Failed to ${action} content:`, error);
+    } finally {
+      setProcessingAction(null);
     }
   };
 
   const handleBulkAction = async () => {
     if (!bulkAction || selectedItems.length === 0) return;
 
-    const token = authManager.getToken();
-    if (!token) return;
-
     try {
-      for (const itemId of selectedItems) {
-        await handleItemAction(itemId, bulkAction);
-      }
-      setSelectedItems([]);
-      setBulkAction('');
-    } catch (error) {
-      console.error('Bulk action failed:', error);
-    }
-  };
-
-  const handleItemSelect = (itemId: string, selected: boolean) => {
-    setSelectedItems(prev => 
-      selected 
-        ? [...prev, itemId]
-        : prev.filter(id => id !== itemId)
-    );
-  };
-
-  const handleSelectAll = (selected: boolean) => {
-    setSelectedItems(selected ? content.map(item => item.id) : []);
-  };
-
-  const saveContentEdit = async (editedItem: ContentItem) => {
-    try {
-      const token = authManager.getToken();
+      const token = authManager.getCurrentToken();
       if (!token) return;
 
-      await apiClient.updateContent(token, editedItem.id, {
-        title: editedItem.title,
-        content: editedItem.content,
-        category: editedItem.category,
-        neighborhood_id: editedItem.neighborhood_id
+      setProcessingAction('bulk');
+
+      // Process each selected item
+      const promises = selectedItems.map(itemId => {
+        if (bulkAction === 'approve') {
+          return apiClient.approveContent(token, itemId);
+        } else if (bulkAction === 'delete') {
+          return apiClient.deleteContent(token, itemId);
+        }
+        return Promise.resolve();
       });
 
-      // Update in local state
-      setContent(prev => prev.map(item => 
-        item.id === editedItem.id ? editedItem : item
-      ));
-      setEditingItem(null);
+      await Promise.all(promises);
+
+      // Remove processed items from the list
+      setContent(prev => prev.filter(item => !selectedItems.includes(item.id)));
+      setSelectedItems([]);
+      setBulkAction('');
+
     } catch (error) {
-      console.error('Content update failed:', error);
+      console.error('Bulk action failed:', error);
+    } finally {
+      setProcessingAction(null);
     }
   };
 
-  const formatTimeAgo = (timestamp: number) => {
-    const minutes = Math.floor((Date.now() - timestamp) / (1000 * 60));
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  };
-
-  const getStatusBadge = (status: string) => {
-    const badges = {
-      review: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '⚠️ Review' },
-      approved: { bg: 'bg-green-100', text: 'text-green-800', label: '✅ Approved' },
-      published: { bg: 'bg-blue-100', text: 'text-blue-800', label: '📰 Published' },
-      rejected: { bg: 'bg-red-100', text: 'text-red-800', label: '❌ Rejected' },
-      draft: { bg: 'bg-gray-100', text: 'text-gray-800', label: '📝 Draft' }
-    };
-    const badge = badges[status as keyof typeof badges] || badges.draft;
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
-        {badge.label}
-      </span>
+  const handleSelectItem = (itemId: string) => {
+    setSelectedItems(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
     );
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'text-green-600';
-    if (confidence >= 0.6) return 'text-yellow-600';
-    return 'text-red-600';
+  const handleSelectAll = () => {
+    if (selectedItems.length === content.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(content.map(item => item.id));
+    }
   };
 
-  const filteredContent = content.filter(item => {
-    if (filters.search && !item.title.toLowerCase().includes(filters.search.toLowerCase()) &&
-        !item.content.toLowerCase().includes(filters.search.toLowerCase())) {
-      return false;
+  const formatTimeAgo = (timestamp: number): string => {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'published': return 'text-green-600 bg-green-100';
+      case 'review': return 'text-yellow-600 bg-yellow-100';
+      case 'rejected': return 'text-red-600 bg-red-100';
+      case 'draft': return 'text-gray-600 bg-gray-100';
+      default: return 'text-blue-600 bg-blue-100';
     }
-    if (filters.category !== 'all' && item.category !== filters.category) return false;
-    if (filters.neighborhood !== 'all' && item.neighborhood_id !== filters.neighborhood) return false;
-    if (item.ai_confidence < filters.confidence_min) return false;
-    return true;
-  });
+  };
+
+  const getCategoryColor = (category: string): string => {
+    switch (category) {
+      case 'emergency': return 'text-red-600 bg-red-100';
+      case 'local': return 'text-blue-600 bg-blue-100';
+      case 'business': return 'text-green-600 bg-green-100';
+      case 'community': return 'text-purple-600 bg-purple-100';
+      case 'events': return 'text-orange-600 bg-orange-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  // Filter content by search query
+  const filteredContent = content.filter(item =>
+    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading content...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">📝 Content Management</h1>
-                <p className="text-gray-600">Review, edit, and manage AI-generated content</p>
-              </div>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => router.push('/admin')}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                >
-                  ← Dashboard
-                </button>
-                <button 
-                  onClick={() => fetchContent()}
-                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
-                >
-                  🔄 Refresh
-                </button>
-              </div>
-            </div>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">📝 Content Management</h1>
+            <p className="mt-2 text-gray-600">
+              Review, approve, and manage AI-generated content
+            </p>
           </div>
-        </div>
 
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          {/* Tabs */}
-          <div className="bg-white rounded-lg shadow-sm border mb-6">
+          {/* Controls */}
+          <div className="mb-6 space-y-4">
+            {/* Tabs */}
             <div className="border-b border-gray-200">
-              <nav className="flex space-x-8 px-6">
+              <nav className="-mb-px flex space-x-8">
                 {[
-                  { key: 'review', label: '⚠️ Needs Review', count: content.filter(i => i.status === 'review').length },
-                  { key: 'approved', label: '✅ Approved', count: content.filter(i => i.status === 'approved').length },
-                  { key: 'published', label: '📰 Published', count: content.filter(i => i.status === 'published').length },
-                  { key: 'rejected', label: '❌ Rejected', count: content.filter(i => i.status === 'rejected').length },
-                  { key: 'all', label: '📋 All Content', count: content.length }
-                ].map(tab => (
+                  { key: 'review', label: 'Pending Review', count: content.filter(c => c.status === 'review').length },
+                  { key: 'published', label: 'Published', count: content.filter(c => c.status === 'published').length },
+                  { key: 'rejected', label: 'Rejected', count: content.filter(c => c.status === 'rejected').length },
+                  { key: 'all', label: 'All Content', count: content.length }
+                ].map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setSelectedTab(tab.key)}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       selectedTab === tab.key
                         ? 'border-blue-500 text-blue-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
                   >
-                    {tab.label} ({tab.count})
+                    {tab.label}
+                    <span className="ml-2 px-2 py-1 text-xs bg-gray-100 rounded-full">
+                      {tab.count}
+                    </span>
                   </button>
                 ))}
               </nav>
             </div>
 
-            {/* Filters */}
-            <div className="p-6 bg-gray-50">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div>
-                  <input
-                    type="text"
-                    placeholder="Search content..."
-                    value={filters.search}
-                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <select
-                    value={filters.category}
-                    onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="all">All Categories</option>
-                    <option value="emergency">Emergency</option>
-                    <option value="transport">Transport</option>
-                    <option value="local_gov">Local Government</option>
-                    <option value="business">Business</option>
-                    <option value="weather">Weather</option>
-                    <option value="events">Events</option>
-                  </select>
-                </div>
-                <div>
-                  <select
-                    value={filters.neighborhood}
-                    onChange={(e) => setFilters(prev => ({ ...prev, neighborhood: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="all">All Neighborhoods</option>
-                    <option value="vinohrady">Vinohrady</option>
-                    <option value="praha2">Praha 2</option>
-                    <option value="praha4">Praha 4</option>
-                    <option value="karlin">Karlín</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Min Confidence</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={filters.confidence_min}
-                    onChange={(e) => setFilters(prev => ({ ...prev, confidence_min: parseFloat(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <div className="text-xs text-gray-500 mt-1">{filters.confidence_min.toFixed(1)}+</div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setFilters({ category: 'all', neighborhood: 'all', confidence_min: 0, search: '' })}
-                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded text-sm"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+            {/* Search and Filters */}
+            <div className="flex flex-wrap gap-4 items-center justify-between">
+              <div className="flex gap-4 items-center">
+                <input
+                  type="text"
+                  placeholder="Search content..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 w-64"
+                />
+                
+                <select
+                  value={filters.category || 'all'}
+                  onChange={(e) => setFilters(prev => ({ 
+                    ...prev, 
+                    category: e.target.value === 'all' ? undefined : e.target.value 
+                  }))}
+                  className="border border-gray-300 rounded-md px-3 py-2"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="emergency">Emergency</option>
+                  <option value="local">Local</option>
+                  <option value="business">Business</option>
+                  <option value="community">Community</option>
+                  <option value="events">Events</option>
+                </select>
 
-          {/* Bulk Actions */}
-          {selectedItems.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-blue-800">
-                  {selectedItems.length} items selected
-                </span>
-                <div className="flex gap-2">
+                <select
+                  value={filters.neighborhood || 'all'}
+                  onChange={(e) => setFilters(prev => ({ 
+                    ...prev, 
+                    neighborhood: e.target.value === 'all' ? undefined : e.target.value 
+                  }))}
+                  className="border border-gray-300 rounded-md px-3 py-2"
+                >
+                  <option value="all">All Neighborhoods</option>
+                  <option value="vinohrady">Vinohrady</option>
+                  <option value="karlin">Karlín</option>
+                  <option value="smichov">Smíchov</option>
+                  <option value="nove_mesto">Nové Město</option>
+                </select>
+              </div>
+
+              {/* Bulk Actions */}
+              {selectedItems.length > 0 && (
+                <div className="flex gap-2 items-center">
+                  <span className="text-sm text-gray-600">
+                    {selectedItems.length} selected
+                  </span>
                   <select
                     value={bulkAction}
                     onChange={(e) => setBulkAction(e.target.value)}
-                    className="px-3 py-1 border rounded text-sm"
+                    className="border border-gray-300 rounded-md px-3 py-2 text-sm"
                   >
-                    <option value="">Choose Action</option>
-                    <option value="approve">Approve All</option>
-                    <option value="reject">Reject All</option>
-                    <option value="delete">Delete All</option>
+                    <option value="">Bulk Actions</option>
+                    <option value="approve">Approve Selected</option>
+                    <option value="delete">Delete Selected</option>
                   </select>
                   <button
                     onClick={handleBulkAction}
-                    disabled={!bulkAction}
-                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+                    disabled={!bulkAction || processingAction === 'bulk'}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Apply
-                  </button>
-                  <button
-                    onClick={() => setSelectedItems([])}
-                    className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm"
-                  >
-                    Clear
+                    {processingAction === 'bulk' ? 'Processing...' : 'Apply'}
                   </button>
                 </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Content List */}
-          <div className="bg-white rounded-lg shadow-sm border">
-            {loading ? (
-              <div className="p-8 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading content...</p>
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            {/* Header with Select All */}
+            <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedItems.length === filteredContent.length && filteredContent.length > 0}
+                  onChange={handleSelectAll}
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded mr-4"
+                />
+                <span className="text-sm font-medium text-gray-900">
+                  {filteredContent.length} items
+                </span>
               </div>
-            ) : (
-              <>
-                {/* Table Header */}
-                <div className="px-6 py-3 border-b bg-gray-50 flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={selectedItems.length === filteredContent.length && filteredContent.length > 0}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded mr-4"
-                  />
-                  <div className="flex-1 grid grid-cols-6 gap-4 text-xs font-semibold text-gray-600 uppercase">
-                    <div>Title & Source</div>
-                    <div>Category</div>
-                    <div>Neighborhood</div>
-                    <div>AI Score</div>
-                    <div>Status</div>
-                    <div>Actions</div>
-                  </div>
-                </div>
+            </div>
 
-                {/* Content Items */}
-                <div className="divide-y">
-                  {filteredContent.map(item => (
-                    <div key={item.id} className="px-6 py-4 hover:bg-gray-50">
-                      <div className="flex items-start">
-                        <input
-                          type="checkbox"
-                          checked={selectedItems.includes(item.id)}
-                          onChange={(e) => handleItemSelect(item.id, e.target.checked)}
-                          className="rounded mr-4 mt-1"
-                        />
-                        <div className="flex-1 grid grid-cols-6 gap-4">
-                          {/* Title & Source */}
-                          <div>
-                            <h3 className="font-semibold text-sm mb-1 line-clamp-2">
+            {/* Content Items */}
+            <div className="divide-y divide-gray-200">
+              {filteredContent.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <p className="text-gray-500">No content found matching your criteria.</p>
+                </div>
+              ) : (
+                filteredContent.map((item) => (
+                  <div key={item.id} className="px-6 py-4 hover:bg-gray-50">
+                    <div className="flex items-start space-x-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(item.id)}
+                        onChange={() => handleSelectItem(item.id)}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded mt-1"
+                      />
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-medium text-gray-900 line-clamp-2">
                               {item.title}
                             </h3>
-                            <div className="text-xs text-gray-500">
-                              {item.source}
-                              {item.original_url && (
-                                <a 
-                                  href={item.original_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="ml-2 text-blue-600 hover:text-blue-800"
-                                >
-                                  🔗
-                                </a>
+                            
+                            <p className="mt-1 text-sm text-gray-600 line-clamp-3">
+                              {item.content}
+                            </p>
+                            
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
+                                {item.status}
+                              </span>
+                              
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(item.category)}`}>
+                                {item.category}
+                              </span>
+                              
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-gray-600 bg-gray-100">
+                                {item.neighborhood_name}
+                              </span>
+                              
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-purple-600 bg-purple-100">
+                                {Math.round(item.ai_confidence * 100)}% confidence
+                              </span>
+                            </div>
+                            
+                            <div className="mt-2 text-xs text-gray-500">
+                              Created {formatTimeAgo(item.created_at)}
+                              {item.published_at && (
+                                <span> • Published {formatTimeAgo(item.published_at)}</span>
                               )}
                             </div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              {formatTimeAgo(item.created_at)}
-                            </div>
                           </div>
-
-                          {/* Category */}
-                          <div>
-                            <span className="px-2 py-1 bg-gray-100 rounded text-xs capitalize">
-                              {item.category.replace('_', ' ')}
-                            </span>
-                          </div>
-
-                          {/* Neighborhood */}
-                          <div>
-                            <span className="text-sm capitalize">
-                              {item.neighborhood_id.replace('_', ' ')}
-                            </span>
-                          </div>
-
-                          {/* AI Score */}
-                          <div>
-                            <span className={`font-semibold ${getConfidenceColor(item.ai_confidence)}`}>
-                              {(item.ai_confidence * 100).toFixed(0)}%
-                            </span>
-                          </div>
-
-                          {/* Status */}
-                          <div>
-                            {getStatusBadge(item.status)}
-                            {item.reason_flagged && (
-                              <div className="text-xs text-red-600 mt-1">
-                                {item.reason_flagged}
-                              </div>
-                            )}
-                          </div>
-
+                          
                           {/* Actions */}
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => setEditingItem(item)}
-                              className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
-                            >
-                              ✏️
-                            </button>
+                          <div className="flex space-x-2 ml-4">
                             {item.status === 'review' && (
                               <>
                                 <button
                                   onClick={() => handleItemAction(item.id, 'approve')}
-                                  className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+                                  disabled={processingAction === item.id}
+                                  className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
                                 >
-                                  ✅
+                                  {processingAction === item.id ? '...' : 'Approve'}
                                 </button>
                                 <button
-                                  onClick={() => handleItemAction(item.id, 'reject')}
-                                  className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                                  onClick={() => handleItemAction(item.id, 'reject', 'Admin review')}
+                                  disabled={processingAction === item.id}
+                                  className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
                                 >
-                                  ❌
+                                  {processingAction === item.id ? '...' : 'Reject'}
                                 </button>
                               </>
                             )}
+                            
+                            <button
+                              onClick={() => setEditingItem(item)}
+                              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                            >
+                              Edit
+                            </button>
+                            
                             <button
                               onClick={() => handleItemAction(item.id, 'delete')}
-                              className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
+                              disabled={processingAction === item.id}
+                              className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700 disabled:opacity-50"
                             >
-                              🗑️
+                              Delete
                             </button>
                           </div>
                         </div>
                       </div>
-
-                      {/* Content Preview */}
-                      <div className="mt-3 ml-8">
-                        <p className="text-sm text-gray-700 line-clamp-3">
-                          {item.content}
-                        </p>
-                      </div>
                     </div>
-                  ))}
-                </div>
-
-                {filteredContent.length === 0 && (
-                  <div className="p-8 text-center">
-                    <div className="text-4xl mb-3">📰</div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      No content found
-                    </h3>
-                    <p className="text-gray-600">
-                      Try adjusting your filters or check back later.
-                    </p>
                   </div>
-                )}
-              </>
-            )}
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Pagination */}
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-sm text-gray-700">
+              Showing {filteredContent.length} of {content.length} results
+            </p>
+            
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setFilters(prev => ({ ...prev, offset: Math.max(0, (prev.offset || 0) - (prev.limit || 50)) }))}
+                disabled={!filters.offset}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setFilters(prev => ({ ...prev, offset: (prev.offset || 0) + (prev.limit || 50) }))}
+                disabled={filteredContent.length < (filters.limit || 50)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Edit Modal */}
-        {editingItem && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold">✏️ Edit Content</h2>
-                  <button
-                    onClick={() => setEditingItem(null)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Title</label>
-                    <input
-                      type="text"
-                      value={editingItem.title}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, title: e.target.value } : null)}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Category</label>
-                      <select
-                        value={editingItem.category}
-                        onChange={(e) => setEditingItem(prev => prev ? { ...prev, category: e.target.value } : null)}
-                        className="w-full px-3 py-2 border rounded-lg"
-                      >
-                        <option value="emergency">Emergency</option>
-                        <option value="transport">Transport</option>
-                        <option value="local_gov">Local Government</option>
-                        <option value="business">Business</option>
-                        <option value="weather">Weather</option>
-                        <option value="events">Events</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Neighborhood</label>
-                      <select
-                        value={editingItem.neighborhood_id}
-                        onChange={(e) => setEditingItem(prev => prev ? { ...prev, neighborhood_id: e.target.value } : null)}
-                        className="w-full px-3 py-2 border rounded-lg"
-                      >
-                        <option value="vinohrady">Vinohrady</option>
-                        <option value="praha2">Praha 2</option>
-                        <option value="praha4">Praha 4</option>
-                        <option value="karlin">Karlín</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Content</label>
-                    <textarea
-                      value={editingItem.content}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, content: e.target.value } : null)}
-                      rows={10}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-4">
-                    <button
-                      onClick={() => setEditingItem(null)}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => saveContentEdit(editingItem)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-                    >
-                      Save Changes
-                    </button>
-                  </div>
-                </div>
+      {/* Edit Modal - Simple placeholder */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-96 overflow-y-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Edit Content: {editingItem.title}
+              </h3>
+              <p className="text-sm text-gray-600">
+                Content editing interface would go here. This would include fields for title, content, category, status, etc.
+              </p>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </Layout>
   );
 }

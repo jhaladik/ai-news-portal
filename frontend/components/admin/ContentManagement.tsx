@@ -2,12 +2,12 @@
 // Admin content management with editing, approval, and oversight capabilities
 
 import React, { useState, useEffect } from 'react';
-import { Content, ContentFilters, ContentWithHistory, EditHistory, Neighborhood } from '../../lib/types';
+import { Content, ContentFilters as ContentFiltersType, ContentWithHistory, EditHistory, Neighborhood } from '../../lib/types';
 import { useAuth } from '../auth/AuthProvider';
 import apiClient from '../../lib/api-client';
 import { formatDate, getContentStatusColor, getCategoryColor, formatConfidence } from '../../lib/utils';
 import ContentList from '../content/ContentList';
-import ContentFilters from '../content/ContentFilters';
+import ContentFiltersComponent from '../content/ContentFilters';
 import ContentPreview from '../content/ContentPreview';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -36,7 +36,7 @@ const ContentManagement: React.FC<ContentManagementProps> = ({
   const { token } = useAuth();
   const [content, setContent] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<ContentFilters>({});
+  const [filters, setFilters] = useState<ContentFiltersType>({});
   const [selectedContent, setSelectedContent] = useState<Content | null>(null);
   const [editingContent, setEditingContent] = useState<{
     content: ContentWithHistory | null;
@@ -76,7 +76,7 @@ const ContentManagement: React.FC<ContentManagementProps> = ({
   const { showSuccess, showError } = useToastActions();
 
   // Load content with filters
-  const loadContent = async (newFilters: ContentFilters = filters) => {
+  const loadContent = async (newFilters: ContentFiltersType = filters) => {
     if (!token) return;
 
     setLoading(true);
@@ -225,7 +225,7 @@ const ContentManagement: React.FC<ContentManagementProps> = ({
   };
 
   // Handle filter changes
-  const handleFiltersChange = (newFilters: ContentFilters) => {
+  const handleFiltersChange = (newFilters: ContentFiltersType) => {
     setFilters(newFilters);
     loadContent(newFilters);
   };
@@ -315,14 +315,13 @@ const ContentManagement: React.FC<ContentManagementProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Filters Sidebar */}
         <div className="lg:col-span-1">
-          <ContentFilters
-            filters={filters}
-            neighborhoods={neighborhoods}
-            onFiltersChange={handleFiltersChange}
-            showStatus={true}
-            showAdvanced={true}
-            variant="sidebar"
-          />
+        <ContentFiltersComponent
+        filters={filters}
+        neighborhoods={neighborhoods}
+        onFiltersChange={handleFiltersChange}
+        showStatus={true}
+        showAdvanced={true}
+        />
         </div>
 
         {/* Content List */}

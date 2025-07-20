@@ -204,7 +204,7 @@ const NewsletterManager: React.FC<NewsletterManagerProps> = ({
       });
       
       if (result.statistics) {
-        setSending(prev => ({ ...prev, statistics: result.statistics }));
+        setSending(prev => ({ ...prev, statistics: result.statistics || null }));
       }
       
       showSuccess(`Newsletter sent successfully to ${result.statistics?.sent_count || 'all'} subscribers`);

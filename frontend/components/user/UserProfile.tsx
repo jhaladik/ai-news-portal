@@ -80,19 +80,19 @@ const UserProfileComponent: React.FC<UserProfileProps> = ({
 
     setSaving(true);
     try {
-      await apiClient.updateUserProfile(token, {
-        name: formData.name.trim() || undefined,
-        neighborhood_id: formData.neighborhood_id
-      });
+        await apiClient.updateUserProfile(token, {
+            name: formData.name?.trim() || undefined,
+            neighborhood_id: formData.neighborhood_id
+       });
       
       // Update local state
       if (profile) {
         const updatedProfile = {
-          ...profile,
-          name: formData.name.trim() || undefined,
-          neighborhood_id: formData.neighborhood_id,
-          neighborhood_name: neighborhoods.find(n => n.id === formData.neighborhood_id)?.name || profile.neighborhood_name
-        };
+            ...profile,
+            name: formData.name?.trim() || undefined,
+            neighborhood_id: formData.neighborhood_id,
+            neighborhood_name: neighborhoods.find(n => n.id === formData.neighborhood_id)?.name || profile.neighborhood_name
+          };
         setProfile(updatedProfile);
         setOriginalFormData({ ...formData });
         setHasChanges(false);

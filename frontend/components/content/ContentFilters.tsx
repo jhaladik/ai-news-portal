@@ -2,7 +2,7 @@
 // Advanced filtering component for content with neighborhoods, categories, and status
 
 import React, { useState, useEffect } from 'react';
-import { ContentFilters, Neighborhood } from '../../lib/types';
+import { type ContentFilters, Neighborhood } from '../../lib/types';
 import { CATEGORIES, CONTENT_STATUSES } from '../../lib/types';
 import { formatCategory, capitalizeWords } from '../../lib/utils';
 import Button from '../ui/Button';

@@ -73,15 +73,13 @@ import {
       options: RequestInit = {},
       token?: string
     ): Promise<T> {
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...options.headers
-      };
-  
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-  
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json'
+          };
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
       try {
         const response = await fetch(url, {
           ...options,

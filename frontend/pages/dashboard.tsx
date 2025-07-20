@@ -5,106 +5,150 @@ import Layout from '../components/layout/Layout';
 import ContentCard from '../components/content/ContentCard';
 import ContentFilters from '../components/content/ContentFilters';
 import { AuthManager } from '../lib/auth';
-import { APIClient } from '../lib/api-client';
+import apiClient from '../lib/api-client';
+import { Content, UserProfile, UserEngagementStats, UserPreferences, UserStats, Activity, Neighborhood } from '../lib/types';
 
-interface User {
-  id: string;
-  email: string;
-  role: string;
-  neighborhood_id: string;
-  preferences?: {
-    neighborhoods: string[];
-    content_types: Record<string, boolean>;
-    newsletter_time: string;
-    emergency_alerts: boolean;
-  };
-}
-
-interface Article {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  neighborhood_id: string;
-  ai_confidence: number;
-  created_at: number;
-  priority?: string;
-  affects_user_neighborhoods?: boolean;
+interface DashboardData {
+  content: Content[];
+  statistics: UserStats;
+  recent_activity: Activity[];
+  user_preferences: UserPreferences;
 }
 
 export default function UserDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [articles, setArticles] = useState<Article[]>([]);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [userStats, setUserStats] = useState<UserEngagementStats | null>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [todayStats, setTodayStats] = useState({
-    articlesRead: 0,
-    newsletterStreak: 0,
-    savedArticles: 0
+  const [contentLoading, setContentLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    category: 'all',
+    neighborhood: 'all',
+    limit: 20,
+    offset: 0
   });
 
   const authManager = new AuthManager();
-  const apiClient = new APIClient();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const token = authManager.getToken();
+      const token = authManager.getCurrentToken();
       if (!token) {
         router.push('/login');
         return;
       }
       
-      fetchUserData(token);
-      fetchPersonalizedFeed(token);
-      fetchUserStats(token);
+      fetchInitialData();
     }
   }, []);
 
-  const fetchUserData = async (token: string) => {
-    try {
-      const userData = await apiClient.getUserProfile(token);
-      setUser(userData);
-    } catch (error) {
-      console.error('Failed to fetch user data:', error);
-      router.push('/login');
+  useEffect(() => {
+    if (user) {
+      fetchPersonalizedFeed();
     }
-  };
+  }, [filters, user]);
 
-  const fetchPersonalizedFeed = async (token: string) => {
+  const fetchInitialData = async () => {
     try {
-      const feedData = await apiClient.getPersonalizedFeed(token);
-      setArticles(feedData);
+      const token = authManager.getCurrentToken();
+      if (!token) return;
+
+      setLoading(true);
+
+      // Fetch user profile and dashboard data
+      const [userProfileData, dashboardDataResponse] = await Promise.all([
+        apiClient.getUserProfile(token),
+        apiClient.getUserDashboard(token, { limit: filters.limit, offset: filters.offset })
+      ]);
+
+      setUser(userProfileData.profile);
+      setUserStats(userProfileData.statistics);
+      setDashboardData(dashboardDataResponse);
+
     } catch (error) {
-      console.error('Failed to fetch personalized feed:', error);
+      console.error('Failed to fetch initial data:', error);
+      router.push('/login');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchUserStats = async (token: string) => {
+  const fetchPersonalizedFeed = async () => {
     try {
-      const stats = await apiClient.getUserStats(token);
-      setTodayStats(stats);
+      const token = authManager.getCurrentToken();
+      if (!token) return;
+
+      setContentLoading(true);
+
+      // Build filter parameters
+      const params = {
+        limit: filters.limit,
+        offset: filters.offset,
+        category: filters.category !== 'all' ? filters.category : undefined,
+        neighborhood: filters.neighborhood !== 'all' ? filters.neighborhood : undefined
+      };
+
+      const feedData = await apiClient.getUserDashboard(token, params);
+      setDashboardData(feedData);
+
     } catch (error) {
-      console.error('Failed to fetch user stats:', error);
+      console.error('Failed to fetch personalized feed:', error);
+    } finally {
+      setContentLoading(false);
     }
   };
 
-  const filteredArticles = articles.filter(article => {
-    if (filter === 'all') return true;
-    if (filter === 'priority') return article.priority === 'high';
-    if (filter === 'neighborhood') return article.affects_user_neighborhoods;
-    return article.category === filter;
-  });
+  const handleFilterChange = (newFilters: typeof filters) => {
+    setFilters(newFilters);
+  };
+
+  const formatNumber = (num: number): string => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  };
+
+  const formatTimeAgo = (timestamp: number): string => {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+
+  const neighborhoods: Neighborhood[] = [
+    { id: 'vinohrady', name: 'Vinohrady', slug: 'vinohrady', subscriber_count: 245, status: 'active', created_at: Date.now() },
+    { id: 'karlin', name: 'Karlín', slug: 'karlin', subscriber_count: 189, status: 'active', created_at: Date.now() },
+    { id: 'smichov', name: 'Smíchov', slug: 'smichov', subscriber_count: 156, status: 'active', created_at: Date.now() },
+    { id: 'nove_mesto', name: 'Nové Město', slug: 'nove_mesto', subscriber_count: 312, status: 'active', created_at: Date.now() }
+  ];
 
   if (loading) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading your personalized news...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading your personalized dashboard...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!user || !dashboardData) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">Failed to load dashboard data</p>
+            <button 
+              onClick={fetchInitialData}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Retry
+            </button>
           </div>
         </div>
       </Layout>
@@ -113,175 +157,277 @@ export default function UserDashboard() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-6xl mx-auto px-4 py-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Welcome back, {user?.email?.split('@')[0]}! 👋
-                </h1>
-                <p className="text-gray-600">
-                  Your personalized news for {user?.neighborhood_id}
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => router.push('/preferences')}
-                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
-                >
-                  ⚙️ Preferences
-                </button>
-                <button 
-                  onClick={() => router.push('/newsletters')}
-                  className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200"
-                >
-                  📧 Newsletters
-                </button>
-              </div>
-            </div>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">
+              Welcome back, {user.name || user.email.split('@')[0]}! 👋
+            </h1>
+            <p className="mt-2 text-gray-600">
+              Your personalized Prague news dashboard for {user.neighborhood_name}
+            </p>
           </div>
-        </div>
 
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="grid lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2">
-              {/* Filter Controls */}
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold">📍 Your News Feed</h2>
-                <ContentFilters
-                  value={filter}
-                  onChange={setFilter}
-                  options={[
-                    { value: 'all', label: 'All Updates', count: articles.length },
-                    { value: 'priority', label: 'High Priority', count: articles.filter(a => a.priority === 'high').length },
-                    { value: 'emergency', label: 'Emergency', count: articles.filter(a => a.category === 'emergency').length },
-                    { value: 'transport', label: 'Transport', count: articles.filter(a => a.category === 'transport').length },
-                    { value: 'local_gov', label: 'Local Gov', count: articles.filter(a => a.category === 'local_gov').length }
-                  ]}
-                />
-              </div>
-
-              {/* Articles List */}
-              <div className="space-y-6">
-                {filteredArticles.length > 0 ? (
-                  filteredArticles.map(article => (
-                    <ContentCard 
-                      key={article.id} 
-                      article={article}
-                      showPersonalizedBadges={true}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                    <div className="text-6xl mb-4">📰</div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      No articles in this category
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                      Try changing your filter or check back later for new content.
-                    </p>
-                    <button 
-                      onClick={() => setFilter('all')}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-                    >
-                      View All Articles
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* User Stats */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border">
-                <h3 className="font-semibold mb-4 flex items-center">
-                  📊 Your Activity
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Articles read today:</span>
-                    <span className="font-semibold text-blue-600">{todayStats.articlesRead}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Newsletter streak:</span>
-                    <span className="font-semibold text-green-600">{todayStats.newsletterStreak} days</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Saved articles:</span>
-                    <span className="font-semibold text-purple-600">{todayStats.savedArticles}</span>
-                  </div>
+          {/* Quick Stats */}
+          {userStats && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-lg shadow-sm border">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-600">Content Views</p>
+                        <p className="text-2xl font-bold text-blue-600">{formatNumber(userStats.content_views || 0)}</p>
+                    </div>
+                    <div className="text-3xl">📖</div>
+                    </div>
                 </div>
-              </div>
 
-              {/* Newsletter Preview */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border">
-                <h3 className="font-semibold mb-4 flex items-center">
-                  📧 Today's Newsletter
-                </h3>
-                <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
-                  <p className="mb-2">
-                    Your next personalized newsletter will be sent at{' '}
-                    <span className="font-semibold">
-                      {user?.preferences?.newsletter_time || '8:00 AM'}
-                    </span>
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Based on your preferences for {user?.preferences?.neighborhoods?.join(', ') || user?.neighborhood_id}
-                  </p>
+                <div className="bg-white p-6 rounded-lg shadow-sm border">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-600">Newsletters Clicked</p>
+                        <p className="text-2xl font-bold text-green-600">{formatNumber(userStats.newsletters_clicked || 0)}</p>
+                    </div>
+                    <div className="text-3xl">📧</div>
+                    </div>
                 </div>
-              </div>
+
+                <div className="bg-white p-6 rounded-lg shadow-sm border">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-600">Open Rate</p>
+                        <p className="text-2xl font-bold text-purple-600">{Math.round((userStats.open_rate || 0) * 100)}%</p>
+                    </div>
+                    <div className="text-3xl">📊</div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow-sm border">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-600">Click Rate</p>
+                        <p className="text-2xl font-bold text-orange-600">{Math.round((userStats.click_rate || 0) * 100)}%</p>
+                    </div>
+                    <div className="text-3xl">⭐</div>
+                    </div>
+                </div>
+                </div>
+            )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            {/* Content Filters Sidebar */}
+            <div className="lg:col-span-1">
+              <ContentFilters
+                filters={{
+                  neighborhood: filters.neighborhood,
+                  category: filters.category
+                }}
+                neighborhoods={neighborhoods}
+                onFiltersChange={(newFilters) => handleFilterChange({
+                  ...filters,
+                  neighborhood: newFilters.neighborhood || 'all',
+                  category: newFilters.category || 'all'
+                })}
+                showStatus={false}
+                showAdvanced={true}
+                variant="sidebar"
+              />
 
               {/* Quick Actions */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border">
-                <h3 className="font-semibold mb-4">⚡ Quick Actions</h3>
+              <div className="mt-6 bg-white p-4 rounded-lg shadow-sm border">
+                <h3 className="font-semibold text-gray-900 mb-3">Quick Actions</h3>
                 <div className="space-y-2">
-                  <button 
-                    onClick={() => router.push('/preferences')}
-                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 text-sm"
+                  <button
+                    onClick={() => router.push('/profile')}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
                   >
-                    ⚙️ Update Preferences
+                    📝 Edit Profile
                   </button>
-                  <button 
+                  <button
+                    onClick={() => router.push('/preferences')}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
+                  >
+                    ⚙️ Preferences
+                  </button>
+                  <button
                     onClick={() => router.push('/newsletters')}
-                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 text-sm"
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
                   >
                     📧 Newsletter Archive
                   </button>
-                  <button 
-                    onClick={() => router.push('/profile')}
-                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 text-sm"
-                  >
-                    👤 Account Settings
-                  </button>
-                  <button className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 text-sm">
-                    💾 Saved Articles
-                  </button>
                 </div>
               </div>
 
-              {/* Neighborhood Info */}
-              {user?.neighborhood_id && (
-                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                  <h3 className="font-semibold mb-2 text-blue-900">
-                    📍 Your Neighborhood
-                  </h3>
-                  <p className="text-sm text-blue-700 capitalize">
-                    {user.neighborhood_id.replace('_', ' ')}
-                  </p>
-                  <button 
-                    onClick={() => router.push(`/neighborhood/${user.neighborhood_id}`)}
-                    className="mt-3 text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    View neighborhood feed →
-                  </button>
+              {/* Recent Activity */}
+              {dashboardData.recent_activity && dashboardData.recent_activity.length > 0 && (
+                <div className="mt-6 bg-white p-4 rounded-lg shadow-sm border">
+                  <h3 className="font-semibold text-gray-900 mb-3">Recent Activity</h3>
+                  <div className="space-y-3">
+                    {dashboardData.recent_activity.slice(0, 5).map((activity) => (
+                      <div key={activity.id} className="text-sm">
+                        <p className="text-gray-900">{activity.description}</p>
+                        <p className="text-gray-500 text-xs">{formatTimeAgo(activity.timestamp)}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Main Content Area */}
+            <div className="lg:col-span-3">
+              {/* Content Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Your Personalized News Feed
+                </h2>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={fetchPersonalizedFeed}
+                    disabled={contentLoading}
+                    className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {contentLoading ? '🔄' : '🔄'} Refresh
+                  </button>
+                  <select
+                    value={filters.limit}
+                    onChange={(e) => handleFilterChange({ ...filters, limit: parseInt(e.target.value), offset: 0 })}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    <option value={10}>10 articles</option>
+                    <option value={20}>20 articles</option>
+                    <option value={50}>50 articles</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Content Loading */}
+              {contentLoading && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading personalized content...</p>
+                </div>
+              )}
+
+              {/* Content Grid */}
+              {!contentLoading && (
+                <>
+                  {dashboardData.content.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="text-6xl mb-4">📰</div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        No content found
+                      </h3>
+                      <p className="text-gray-600 mb-4">
+                        Try adjusting your filters or check back later for new content.
+                      </p>
+                      <button
+                        onClick={() => handleFilterChange({ ...filters, category: 'all', neighborhood: 'all' })}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        Clear Filters
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {dashboardData.content.map((article) => (
+                        <ContentCard
+                        key={article.id}
+                        content={article}
+                        variant="default"
+                        showActions={false}
+                        className="hover:shadow-md transition-shadow"
+                        />                     
+                     ))}
+                    </div>
+                  )}
+
+                  {/* Pagination */}
+                  {dashboardData.content.length >= filters.limit && (
+                    <div className="mt-8 flex justify-center space-x-4">
+                      <button
+                        onClick={() => handleFilterChange({ 
+                          ...filters, 
+                          offset: Math.max(0, filters.offset - filters.limit) 
+                        })}
+                        disabled={filters.offset === 0}
+                        className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <span className="px-4 py-2 text-sm text-gray-600">
+                        Showing {filters.offset + 1} - {Math.min(filters.offset + filters.limit, filters.offset + dashboardData.content.length)}
+                      </span>
+                      <button
+                        onClick={() => handleFilterChange({ 
+                          ...filters, 
+                          offset: filters.offset + filters.limit 
+                        })}
+                        disabled={dashboardData.content.length < filters.limit}
+                        className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
+
+          {/* Favorite Categories */}
+          {userStats && userStats.favorite_categories.length > 0 && (
+            <div className="mt-12 bg-white p-6 rounded-lg shadow-sm border">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Favorite Categories</h3>
+              <div className="flex flex-wrap gap-2">
+                {userStats.favorite_categories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => handleFilterChange({ ...filters, category, offset: 0 })}
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      filters.category === category
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                    }`}
+                  >
+                    {category.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Newsletter Preferences */}
+          {dashboardData.user_preferences && (
+            <div className="mt-8 bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Newsletter Preferences</h3>
+                <button
+                  onClick={() => router.push('/preferences')}
+                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
+                >
+                  Edit Preferences →
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">Frequency:</span>
+                  <span className="ml-2 capitalize">{dashboardData.user_preferences.notification_frequency}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Email:</span>
+                  <span className={`ml-2 ${dashboardData.user_preferences.email_enabled ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData.user_preferences.email_enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Categories:</span>
+                  <span className="ml-2">{dashboardData.user_preferences.categories.length} selected</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>

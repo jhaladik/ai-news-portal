@@ -14,7 +14,13 @@ import Modal from '../components/ui/Modal';
 import { LoadingInline } from '../components/ui/Loading';
 import { useToastActions } from '../components/ui/Toast';
 
-const LandingPage: React.FC = () => {
+interface SignupForm {
+    email: string;
+    neighborhood_id: string;
+    categories: string[];
+  }
+
+  const LandingPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [content, setContent] = useState<Content[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
@@ -22,10 +28,10 @@ const LandingPage: React.FC = () => {
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [showSignupModal, setShowSignupModal] = useState(false);
-  const [signupForm, setSignupForm] = useState<NewsletterSignupForm>({
+  const [signupForm, setSignupForm] = useState<SignupForm>({
     email: '',
     neighborhood_id: '',
-    categories: ['local', 'community', 'events']
+    categories: []
   });
   const [subscribing, setSubscribing] = useState(false);
   
@@ -73,7 +79,7 @@ const LandingPage: React.FC = () => {
       setSignupForm({
         email: '',
         neighborhood_id: '',
-        categories: ['local', 'community', 'events']
+        categories: ['local', 'community', 'events'] as string[]
       });
     } catch (error) {
       console.error('Error subscribing:', error);
@@ -96,13 +102,16 @@ const LandingPage: React.FC = () => {
 
   // Toggle category in signup form
   const toggleSignupCategory = (category: string) => {
-    setSignupForm(prev => ({
-      ...prev,
-      categories: prev.categories.includes(category)
-        ? prev.categories.filter(c => c !== category)
-        : [...prev.categories, category]
-    }));
-  };
+    setSignupForm(prev => {
+        const currentCategories = prev.categories || [];
+        return {
+          ...prev,
+          categories: currentCategories.includes(category)
+            ? currentCategories.filter(c => c !== category)
+            : [...currentCategories, category]
+        };
+      });
+      };
 
   // Load initial data
   useEffect(() => {
@@ -440,7 +449,7 @@ const LandingPage: React.FC = () => {
                 <label key={category.id} className="flex items-start space-x-3">
                   <input
                     type="checkbox"
-                    checked={signupForm.categories.includes(category.id)}
+                    checked={(signupForm.categories || []).includes(category.id)}
                     onChange={() => toggleSignupCategory(category.id)}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-1"
                   />
