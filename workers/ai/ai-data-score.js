@@ -62,31 +62,36 @@ export default {
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.CLAUDE_API_KEY,
+            "anthropic-version": "2023-06-01"
+          },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 200,
           messages: [{
             role: "user",
-            content: `Analyze this Prague content for local news relevance. 
-  
-  Title: ${item.title}
-  Content: ${item.content.substring(0, 500)}...
-  Source: ${item.source}
-  
-  Score from 0.0-1.0 based on:
-  - Local Prague relevance (0.4 weight)
-  - Community impact (0.3 weight) 
-  - Timeliness (0.3 weight)
-  
-  Categorize as: emergency, transport, local_government, community, business, weather, or other.
-  
-  Respond ONLY with valid JSON:
-  {
-    "score": 0.85,
-    "category": "transport",
-    "reasoning": "Brief explanation"
-  }`
+            // Update the scoring prompt in ai-data-score.js:
+            content: `Analyze this Prague content and assign to relevant neighborhoods:
+
+            Title: ${item.title}
+            Content: ${item.content.substring(0, 500)}...
+            Source: ${item.source}
+
+            EXISTING NEIGHBORHOODS (use these IDs):
+            - vinohrady, karlin, smichov, zizkov
+            - praha1, praha2, praha4, praha5
+
+            Score from 0.0-1.0 AND assign neighborhood IDs:
+
+            Respond ONLY with valid JSON:
+            {
+            "score": 0.85,
+            "category": "transport",
+            "neighborhood_ids": ["vinohrady", "karlin"],
+            "reasoning": "Metro line A disruption affects Vinohrady and Karlín stations"
+            }`
           }]
         })
       });

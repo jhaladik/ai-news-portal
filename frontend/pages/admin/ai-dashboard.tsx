@@ -187,9 +187,12 @@ export default function AIDashboard() {
                 <Link href="/admin/dashboard" className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
                   📋 Review Queue
                 </Link>
+                <Link href="/admin/rss-management" className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">
+                📡 RSS Management
+                </Link>
                 <Link href="/" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                   🏠 Domů
-                </Link>
+                </Link>                
               </div>
             </div>
           </div>

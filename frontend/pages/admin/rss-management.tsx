@@ -46,6 +46,7 @@ export default function RSSManagement() {
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'sources' | 'collection' | 'history'>('sources');
   const [newSource, setNewSource] = useState({ name: '', url: '', category_hint: 'local_government' });
+  const [showAllItems, setShowAllItems] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -53,7 +54,10 @@ export default function RSSManagement() {
 
   const loadData = async () => {
     try {
-      // Load RSS sources - in real implementation this would come from a sources API
+      setLoading(true);
+      setMessage('');
+  
+      // Load RSS sources - mock data for now, in real implementation this would come from a sources API
       setRssSources([
         {
           id: 'praha4',
@@ -72,7 +76,7 @@ export default function RSSManagement() {
           enabled: true,
           category_hint: 'local_government',
           last_fetched: Date.now() - 3600000,
-          fetch_count: 128,
+          fetch_count: 138,
           error_count: 1
         },
         {
@@ -81,49 +85,113 @@ export default function RSSManagement() {
           url: 'https://www.dpp.cz/rss',
           enabled: true,
           category_hint: 'transport',
-          last_fetched: Date.now() - 3600000,
-          fetch_count: 172,
-          error_count: 2
+          last_fetched: Date.now() - 1800000, // 30 min ago
+          fetch_count: 252,
+          error_count: 0
         },
         {
           id: 'weather',
-          name: 'Prague Weather API',
-          url: 'https://api.openweathermap.org/data/2.5/weather?q=Prague&appid=demo&mode=xml',
+          name: 'Prague Weather',
+          url: 'https://api.openweathermap.org/data/2.5/weather?q=Prague',
           enabled: true,
           category_hint: 'weather',
-          last_fetched: Date.now() - 1800000, // 30 minutes ago
+          last_fetched: Date.now() - 7200000, // 2 hours ago
           fetch_count: 89,
-          error_count: 8
+          error_count: 5
         }
       ]);
-
-      // Load recent pipeline runs - mock data
-      setPipelineRuns([
-        {
-          id: 'run-' + Date.now(),
-          started_at: Date.now() - 7200000,
-          completed_at: Date.now() - 7180000,
-          status: 'completed',
-          collected_items: 8,
-          scored_items: 6,
-          generated_items: 4,
-          published_items: 2
-        },
-        {
-          id: 'run-' + (Date.now() - 1),
-          started_at: Date.now() - 25200000,
-          completed_at: Date.now() - 25180000,
-          status: 'completed',
-          collected_items: 12,
-          scored_items: 9,
-          generated_items: 6,
-          published_items: 4
+  
+      // Load collection results - check if we should show all raw items or just qualified
+      try {
+        const collectionUrl = showAllItems 
+          ? `${process.env.RSS_COLLECT_URL || 'https://rss-collect.jhaladik.workers.dev'}?include_raw=true`
+          : `${process.env.AI_DATA_SCORE_URL || 'https://ai-data-score.jhaladik.workers.dev'}`;
+        
+        const collectionResponse = await fetch(collectionUrl);
+        
+        if (collectionResponse.ok) {
+          const collectionData = await collectionResponse.json();
+          
+          if (showAllItems) {
+            // Show all raw content from database
+            setCollectionResults(collectionData.items?.map(item => ({
+              source: item.source,
+              collected: 1,
+              errors: [],
+              items: [{
+                id: item.id,
+                title: item.title,
+                content: item.content?.substring(0, 200) + '...',
+                score: item.raw_score,
+                category: item.category,
+                collected_at: item.collected_at
+              }]
+            })) || []);
+          } else {
+            // Show only qualified content (score >= 0.6)
+            setCollectionResults(collectionData.items?.map(item => ({
+              source: item.source,
+              collected: 1,
+              errors: [],
+              items: [{
+                id: item.id,
+                title: item.title,
+                content: item.content?.substring(0, 200) + '...',
+                score: item.raw_score,
+                category: item.category
+              }]
+            })) || []);
+          }
+        } else {
+          // Fallback to mock data if API fails
+          setCollectionResults([]);
         }
-      ]);
-
+      } catch (error) {
+        console.error('Collection results loading failed:', error);
+        setCollectionResults([]);
+      }
+  
+      // Load pipeline run history
+      try {
+        const pipelineResponse = await fetch(process.env.PIPELINE_ORCHESTRATOR_URL || 'https://pipeline-orchestrator.jhaladik.workers.dev');
+        
+        if (pipelineResponse.ok) {
+          const pipelineData = await pipelineResponse.json();
+          
+          // Mock pipeline runs if no real data
+          setPipelineRuns([
+            {
+              id: 'run-' + Date.now(),
+              started_at: Date.now() - 3600000,
+              completed_at: Date.now() - 3300000,
+              status: 'completed',
+              collected_items: 45,
+              scored_items: 12,
+              generated_items: 8,
+              published_items: 6
+            },
+            {
+              id: 'run-' + (Date.now() - 86400000),
+              started_at: Date.now() - 90000000,
+              completed_at: Date.now() - 89700000,
+              status: 'completed',
+              collected_items: 38,
+              scored_items: 15,
+              generated_items: 11,
+              published_items: 9
+            }
+          ]);
+        }
+      } catch (error) {
+        console.error('Pipeline history loading failed:', error);
+        setPipelineRuns([]);
+      }
+  
     } catch (error) {
-      console.error('Failed to load RSS management data:', error);
-      setMessage('❌ Chyba při načítání dat');
+      console.error('Data loading failed:', error);
+      setMessage('❌ Chyba při načítání dat: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -443,6 +511,17 @@ export default function RSSManagement() {
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">📊 Výsledky posledního collection</h3>
+                    {/* ADD BUTTON HERE */}
+                    <button
+                        onClick={() => setShowAllItems(!showAllItems)}
+                        className={`px-4 py-2 rounded-lg font-medium ${
+                        showAllItems 
+                            ? 'bg-orange-100 text-orange-700 hover:bg-orange-200' 
+                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        }`}
+                    >
+                        {showAllItems ? '🎯 Show Qualified Only' : '📊 Show All Raw Items'}
+                    </button>
                     <button
                       onClick={collectFromAllSources}
                       disabled={loading}
