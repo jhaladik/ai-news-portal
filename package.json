@@ -40,7 +40,7 @@
     "deploy:ai:auto-approve": "wrangler deploy workers/content/content-auto-approve.js --name content-auto-approve",
     "deploy:ai:batch": "wrangler deploy workers/content/content-batch-approve.js --name content-batch-approve",
 
-    "deploy:phase2b": "npm run deploy:phase2b:rss && npm run deploy:phase2b:ai && npm run deploy:phase2b:pipeline && npm run deploy:phase2b:enhanced",
+    "": "npm run deploy:phase2b:rss && npm run deploy:phase2b:ai && npm run deploy:phase2b:pipeline && npm run deploy:phase2b:enhanced",
     "deploy:phase2b:rss": "wrangler deploy workers/rss/rss-collect.js --name rss-collect",
     "deploy:phase2b:ai": "npm run deploy:phase2b:ai:score && npm run deploy:phase2b:ai:generate && npm run deploy:phase2b:ai:validate",
     "deploy:phase2b:ai:score": "wrangler deploy workers/ai/ai-data-score.js --name ai-data-score",
