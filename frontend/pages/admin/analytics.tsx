@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
-import { AuthManager } from '../../lib/auth';
+import { authManager } from '../../lib/auth';
 import apiClient from '../../lib/api-client';
 import { UserMetrics, ContentMetrics, NewsletterMetrics, NeighborhoodStats, DailyTrends } from '../../lib/types';
 
@@ -52,8 +52,6 @@ export default function AdminAnalytics() {
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'1d' | '7d' | '30d' | '90d'>('7d');
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<string>('all');
-
-  const authManager = new AuthManager();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

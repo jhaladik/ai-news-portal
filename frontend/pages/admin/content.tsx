@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
-import { AuthManager } from '../../lib/auth';
+import { authManager } from '../../lib/auth';
 import apiClient from '../../lib/api-client';
 import { Content, ContentFilters } from '../../lib/types';
 
@@ -22,8 +22,6 @@ export default function AdminContentManagement() {
   const [bulkAction, setBulkAction] = useState('');
   const [editingItem, setEditingItem] = useState<Content | null>(null);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
-
-  const authManager = new AuthManager();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

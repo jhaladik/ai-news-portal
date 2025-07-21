@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
-import { AuthManager } from '../../lib/auth';
+import { authManager } from '../../lib/auth';
 import apiClient from '../../lib/api-client';
 import { Content, RSSSource } from '../../lib/types';
 
@@ -38,8 +38,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [runningPipeline, setRunningPipeline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  const authManager = new AuthManager();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

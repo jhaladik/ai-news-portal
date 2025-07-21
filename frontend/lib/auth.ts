@@ -116,6 +116,13 @@ export const getUserIdFromToken = (token: string): string | null => {
 export class AuthManager {
   private static instance: AuthManager;
   private listeners: (() => void)[] = [];
+// In the AuthManager constructor, add this line:
+  private constructor() {
+    // ADD THIS LINE:
+    if (typeof window !== 'undefined') {
+      (window as any).authManager = this;
+    }
+  }
 
   static getInstance(): AuthManager {
     if (!AuthManager.instance) {
@@ -212,6 +219,20 @@ export class AuthManager {
 // Export singleton instance
 export const authManager = AuthManager.getInstance();
 
+// ADD THIS NEW FUNCTION after the authManager export:
+export const getToken = (): string | null => {
+    try {
+      return authManager.getCurrentToken();
+    } catch (error) {
+      // Fallback: read directly from localStorage
+      console.log('authManager not available, using localStorage fallback');
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem('authToken');
+      }
+      return null;
+    }
+  };
+
 // ============================================================================
 // AUTHENTICATION HELPERS
 // ============================================================================
@@ -256,17 +277,18 @@ export const requireAdmin = (redirectTo: string = '/'): boolean => {
 /**
  * Get authorization headers for API requests
  */
+// REPLACE your existing getAuthHeaders function with:
 export const getAuthHeaders = (): Record<string, string> => {
-  const token = authManager.getCurrentToken();
-  
-  if (!token) {
-    return {};
-  }
-  
-  return {
-    Authorization: `Bearer ${token}`
+    const token = getToken(); // Use helper with fallback instead of authManager.getCurrentToken()
+    
+    if (!token) {
+      return {};
+    }
+    
+    return {
+      Authorization: `Bearer ${token}`
+    };
   };
-};
 
 /**
  * Handle API authentication errors
@@ -303,17 +325,24 @@ export const userBelongsToNeighborhood = (user: User | null, neighborhoodId: str
 /**
  * Initialize auth manager - call this on app startup
  */
+// ADD THIS NEW FUNCTION at the end:
 export const initializeAuth = (): void => {
-  // Check token expiration on initialization
-  authManager.checkTokenExpiration();
+    if (typeof window === 'undefined') return;
+    
+    // Check token expiration on initialization
+    authManager.checkTokenExpiration();
+    
+    // Make available globally for debugging and diagnostics
+    (window as any).authManager = authManager;
+    (window as any).getToken = getToken;
+    
+    console.log('🔧 AuthManager initialized and available globally');
+  };
   
-  // Set up periodic token expiration check (every 5 minutes)
+  // ADD THIS AUTO-INITIALIZATION:
   if (typeof window !== 'undefined') {
-    setInterval(() => {
-      authManager.checkTokenExpiration();
-    }, 5 * 60 * 1000); // 5 minutes
+    initializeAuth();
   }
-};
 
 // ============================================================================
 // ROLE-BASED ACCESS CONTROL

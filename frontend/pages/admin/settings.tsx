@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
-import { AuthManager } from '../../lib/auth';
+import { authManager } from '../../lib/auth';
 import apiClient from '../../lib/api-client';
 import { RSSSource } from '../../lib/types';
 
@@ -49,8 +49,6 @@ export default function AdminSettings() {
     neighborhood_id: '',
     priority: 1
   });
-
-  const authManager = new AuthManager();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
