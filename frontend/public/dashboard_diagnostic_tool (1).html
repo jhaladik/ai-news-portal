@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Diagnostic Tool</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        .token-display {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .api-logs {
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Dashboard Loading Diagnostic Tool</h1>
+    
+    <div class="container">
+        <h2>🎯 Issue Summary</h2>
+        <div class="warning">
+            <h3>Token Format Mismatch Found!</h3>
+            <p><strong>Problem:</strong> Your auth-login worker creates simple base64 tokens, but user-dashboard and user-profile workers expect JWT format.</p>
+            <p><strong>Solution:</strong> Deploy the fixed worker files that handle both token formats.</p>
+            <p><strong>Files to deploy:</strong></p>
+            <ul>
+                <li>Fixed user-dashboard.js worker</li>
+                <li>Fixed user-profile.js worker</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>Step 1: Token Verification</h2>
+        <div class="test-section">
+            <h3>Current Token Analysis</h3>
+            <button onclick="analyzeCurrentToken()">Analyze Current Token</button>
+            <div id="tokenAnalysis"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: API Endpoint Testing</h2>
+        <div class="test-section">
+            <h3>Test Login and Get Token</h3>
+            <input type="email" id="loginEmail" placeholder="admin@ai-news.com" value="admin@ai-news.com">
+            <input type="password" id="loginPassword" placeholder="Password" value="password123">
+            <button onclick="testLogin()">Test Login</button>
+            <div id="loginResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Dashboard Endpoints</h3>
+            <button onclick="testUserProfile()">Test User Profile API</button>
+            <button onclick="testUserDashboard()">Test User Dashboard API</button>
+            <button onclick="testAllEndpoints()">Test All Dashboard APIs</button>
+            <div id="endpointResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Environment Variables Check</h2>
+        <div class="test-section">
+            <button onclick="checkEnvironmentVariables()">Check Environment Variables</button>
+            <div id="envResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 4: Network Analysis</h2>
+        <div class="test-section">
+            <button onclick="runNetworkDiagnostics()">Run Network Diagnostics</button>
+            <div id="networkResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>API Request Logs</h2>
+        <div class="api-logs" id="apiLogs"></div>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <div class="container">
+        <h2>Step 5: Frontend Dashboard Testing</h2>
+        <div class="test-section">
+            <h3>Test Frontend Flow</h3>
+            <button onclick="testFrontendLogin()">Test Frontend Login Flow</button>
+            <button onclick="testDashboardPage()">Test Dashboard Page</button>
+            <button onclick="checkAuthState()">Check Auth State</button>
+            <button onclick="simulateDashboardAPI()">Simulate Dashboard Load</button>
+            <div id="frontendResults"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Browser Console Check</h3>
+            <button onclick="captureConsoleErrors()">Capture Console Errors</button>
+            <button onclick="checkNetworkRequests()">Check Network Requests</button>
+            <div id="consoleResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 6: Manual Dashboard Test</h2>
+        <div class="test-section">
+            <h3>Direct API Test</h3>
+            <p>Test the exact API calls your dashboard should make:</p>
+            <button onclick="fullDashboardSimulation()">Full Dashboard Simulation</button>
+            <div id="simulationResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🚀 Fix Instructions</h2>
+        <div class="test-section">
+            <h3>Status: APIs Working ✅ - Frontend Issue 🔍</h3>
+            <div class="success">
+                <p><strong>✅ APIs are working correctly</strong></p>
+                <p>Issue is likely in the frontend dashboard page not calling the APIs or handling responses</p>
+            </div>
+            <div class="warning">
+                <p><strong>Next Steps:</strong></p>
+                <ul>
+                    <li>Check browser console for JavaScript errors</li>
+                    <li>Verify dashboard page is making API calls</li>
+                    <li>Check auth token is being sent correctly</li>
+                    <li>Test frontend routing from login to dashboard</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Environment configuration based on the project
+        const API_ENDPOINTS = {
+            auth: 'https://auth-login.jhaladik.workers.dev',
+            userProfile: 'https://user-profile.jhaladik.workers.dev',
+            userDashboard: 'https://user-dashboard.jhaladik.workers.dev',
+            contentList: 'https://content-list.jhaladik.workers.dev'
+        };
+
+        let currentToken = null;
+
+        function logAPI(message, type = 'info') {
+            const logs = document.getElementById('apiLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('apiLogs').innerHTML = '';
+        }
+
+        function analyzeCurrentToken() {
+            const result = document.getElementById('tokenAnalysis');
+            
+            // Try to get token from localStorage (typical auth manager storage)
+            const storedToken = localStorage.getItem('authToken') || 
+                               localStorage.getItem('token') || 
+                               sessionStorage.getItem('authToken');
+            
+            if (!storedToken) {
+                result.innerHTML = '<div class="error">❌ No token found in localStorage or sessionStorage</div>';
+                return;
+            }
+
+            try {
+                let payload, tokenType;
+                
+                if (storedToken.includes('.')) {
+                    // JWT format
+                    const parts = storedToken.split('.');
+                    if (parts.length !== 3) {
+                        throw new Error('Invalid JWT format');
+                    }
+                    const header = JSON.parse(atob(parts[0]));
+                    payload = JSON.parse(atob(parts[1]));
+                    tokenType = 'JWT';
+                } else {
+                    // Simple base64 format (current auth-login format)
+                    payload = JSON.parse(atob(storedToken));
+                    tokenType = 'Base64';
+                }
+                
+                const now = Date.now();
+                const isExpired = payload.exp && payload.exp < now;
+                
+                result.innerHTML = `
+                    <div class="success">✅ Token found and decoded successfully</div>
+                    <div class="token-display">
+                        <strong>Type:</strong> ${tokenType}<br>
+                        <strong>Payload:</strong> ${JSON.stringify(payload, null, 2)}<br>
+                        <strong>Expires:</strong> ${payload.exp ? new Date(payload.exp).toLocaleString() : 'No expiration'}<br>
+                        <strong>Status:</strong> ${isExpired ? '🔴 EXPIRED' : '🟢 VALID'}
+                    </div>
+                `;
+                
+                currentToken = storedToken;
+                logAPI(`Token analyzed: Type: ${tokenType}, User ID: ${payload.userId || payload.user_id}, Role: ${payload.role}, Expired: ${isExpired}`, 'info');
+                
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ Error decoding token: ${error.message}</div>`;
+                logAPI(`Token decode error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const result = document.getElementById('loginResult');
+            
+            result.innerHTML = '<div class="info">🔄 Testing login...</div>';
+            logAPI(`Attempting login with email: ${email}`, 'info');
+            
+            try {
+                const response = await fetch(API_ENDPOINTS.auth, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                logAPI(`Login response: ${response.status} - ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+                
+                if (response.ok && data.success && data.token) {
+                    currentToken = data.token;
+                    // Store token for further tests
+                    localStorage.setItem('authToken', data.token);
+                    
+                    result.innerHTML = `
+                        <div class="success">✅ Login successful!</div>
+                        <div class="token-display">
+                            <strong>Token:</strong> ${data.token}<br>
+                            <strong>User:</strong> ${JSON.stringify(data.user, null, 2)}
+                        </div>
+                    `;
+                } else {
+                    result.innerHTML = `<div class="error">❌ Login failed: ${data.error || 'Unknown error'}</div>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ Network error: ${error.message}</div>`;
+                logAPI(`Login network error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testUserProfile() {
+            if (!currentToken) {
+                alert('Please login first or analyze current token');
+                return;
+            }
+            
+            logAPI('Testing User Profile API endpoint', 'info');
+            
+            try {
+                const response = await fetch(API_ENDPOINTS.userProfile, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                logAPI(`User Profile response: ${response.status} - ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+                
+                const resultDiv = document.getElementById('endpointResults');
+                if (response.ok) {
+                    resultDiv.innerHTML += `<div class="success">✅ User Profile API working</div>`;
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ User Profile API failed: ${data.error}</div>`;
+                }
+            } catch (error) {
+                logAPI(`User Profile API error: ${error.message}`, 'error');
+                document.getElementById('endpointResults').innerHTML += `<div class="error">❌ User Profile API error: ${error.message}</div>`;
+            }
+        }
+
+        async function testUserDashboard() {
+            if (!currentToken) {
+                alert('Please login first or analyze current token');
+                return;
+            }
+            
+            logAPI('Testing User Dashboard API endpoint', 'info');
+            
+            try {
+                const response = await fetch(`${API_ENDPOINTS.userDashboard}?limit=5`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                logAPI(`User Dashboard response: ${response.status} - ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+                
+                const resultDiv = document.getElementById('endpointResults');
+                if (response.ok) {
+                    resultDiv.innerHTML += `<div class="success">✅ User Dashboard API working</div>`;
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ User Dashboard API failed: ${data.error}</div>`;
+                }
+            } catch (error) {
+                logAPI(`User Dashboard API error: ${error.message}`, 'error');
+                document.getElementById('endpointResults').innerHTML += `<div class="error">❌ User Dashboard API error: ${error.message}</div>`;
+            }
+        }
+
+        async function testAllEndpoints() {
+            document.getElementById('endpointResults').innerHTML = '<div class="info">🔄 Testing all endpoints...</div>';
+            await testUserProfile();
+            await testUserDashboard();
+        }
+
+        function checkEnvironmentVariables() {
+            const result = document.getElementById('envResults');
+            
+            const expectedEnvVars = [
+                'AUTH_LOGIN_URL',
+                'USER_PROFILE_URL', 
+                'USER_DASHBOARD_URL',
+                'CONTENT_LIST_URL'
+            ];
+            
+            let html = '<h4>Environment Variables Check:</h4>';
+            
+            // Check if we can access these from window
+            const envCheck = {
+                'AUTH_LOGIN_URL': API_ENDPOINTS.auth,
+                'USER_PROFILE_URL': API_ENDPOINTS.userProfile,
+                'USER_DASHBOARD_URL': API_ENDPOINTS.userDashboard,
+                'CONTENT_LIST_URL': API_ENDPOINTS.contentList
+            };
+            
+            for (const [key, value] of Object.entries(envCheck)) {
+                const status = value ? '✅' : '❌';
+                const color = value ? 'success' : 'error';
+                html += `<div class="${color}">${status} ${key}: ${value || 'NOT SET'}</div>`;
+            }
+            
+            result.innerHTML = html;
+            logAPI('Environment variables checked', 'info');
+        }
+
+        async function runNetworkDiagnostics() {
+            const result = document.getElementById('networkResults');
+            result.innerHTML = '<div class="info">🔄 Running network diagnostics...</div>';
+            
+            const diagnostics = [];
+            
+            // Test each endpoint with a simple GET request
+            for (const [name, url] of Object.entries(API_ENDPOINTS)) {
+                try {
+                    const start = Date.now();
+                    const response = await fetch(url, { method: 'OPTIONS' }); // Use OPTIONS to avoid CORS issues
+                    const time = Date.now() - start;
+                    
+                    diagnostics.push(`✅ ${name}: ${url} (${time}ms)`);
+                    logAPI(`Network test ${name}: ${response.status} in ${time}ms`, 'success');
+                } catch (error) {
+                    diagnostics.push(`❌ ${name}: ${url} - ${error.message}`);
+                    logAPI(`Network test ${name} failed: ${error.message}`, 'error');
+                }
+            }
+            
+            result.innerHTML = diagnostics.map(d => `<div class="${d.startsWith('✅') ? 'success' : 'error'}">${d}</div>`).join('');
+        }
+
+        // Initialize
+        window.onload = function() {
+            logAPI('Dashboard Diagnostic Tool initialized', 'info');
+            checkEnvironmentVariables();
+        };
+
+        // Frontend testing functions
+        async function testFrontendLogin() {
+            const result = document.getElementById('frontendResults');
+            result.innerHTML = '<div class="info">🔄 Testing frontend login flow...</div>';
+            
+            try {
+                // Test if we can access the login page
+                const loginResponse = await fetch('/login', { method: 'GET' });
+                logAPI(`Login page: ${loginResponse.status}`, loginResponse.ok ? 'success' : 'error');
+                
+                // Test if dashboard page exists
+                const dashboardResponse = await fetch('/dashboard', { method: 'GET' });
+                logAPI(`Dashboard page: ${dashboardResponse.status}`, dashboardResponse.ok ? 'success' : 'error');
+                
+                result.innerHTML += `
+                    <div class="${loginResponse.ok ? 'success' : 'error'}">
+                        Login page: ${loginResponse.status}
+                    </div>
+                    <div class="${dashboardResponse.ok ? 'success' : 'error'}">
+                        Dashboard page: ${dashboardResponse.status}
+                    </div>
+                `;
+                
+            } catch (error) {
+                result.innerHTML += `<div class="error">Frontend test error: ${error.message}</div>`;
+                logAPI(`Frontend test error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDashboardPage() {
+            const result = document.getElementById('frontendResults');
+            result.innerHTML += '<div class="info">🔄 Testing dashboard page access...</div>';
+            
+            // Try to navigate to dashboard
+            const currentUrl = window.location.href;
+            const dashboardUrl = currentUrl.replace(/\/[^\/]*$/, '/dashboard');
+            
+            try {
+                const response = await fetch(dashboardUrl);
+                result.innerHTML += `<div class="${response.ok ? 'success' : 'error'}">Dashboard page fetch: ${response.status}</div>`;
+                
+                if (response.ok) {
+                    const html = await response.text();
+                    const hasReact = html.includes('react') || html.includes('_next');
+                    const hasAuthCheck = html.includes('auth') || html.includes('token');
+                    
+                    result.innerHTML += `
+                        <div class="info">Dashboard page analysis:</div>
+                        <div class="${hasReact ? 'success' : 'warning'}">React/Next.js: ${hasReact ? 'Found' : 'Not found'}</div>
+                        <div class="${hasAuthCheck ? 'success' : 'warning'}">Auth logic: ${hasAuthCheck ? 'Found' : 'Not found'}</div>
+                    `;
+                }
+            } catch (error) {
+                result.innerHTML += `<div class="error">Dashboard page test error: ${error.message}</div>`;
+            }
+        }
+
+        function checkAuthState() {
+            const result = document.getElementById('frontendResults');
+            
+            // Check all possible token storage locations
+            const tokens = {
+                'localStorage.authToken': localStorage.getItem('authToken'),
+                'localStorage.token': localStorage.getItem('token'),
+                'localStorage.ai_news_token': localStorage.getItem('ai_news_token'),
+                'sessionStorage.authToken': sessionStorage.getItem('authToken'),
+                'sessionStorage.token': sessionStorage.getItem('token')
+            };
+            
+            let html = '<div class="info">🔍 Auth state check:</div>';
+            let foundToken = false;
+            
+            for (const [key, value] of Object.entries(tokens)) {
+                if (value) {
+                    foundToken = true;
+                    html += `<div class="success">✅ ${key}: Present</div>`;
+                } else {
+                    html += `<div class="warning">❌ ${key}: Not found</div>`;
+                }
+            }
+            
+            if (!foundToken) {
+                html += '<div class="error">🚨 No auth tokens found! Frontend may not be storing login state.</div>';
+            }
+            
+            // Check if authManager exists
+            if (typeof window.authManager !== 'undefined') {
+                html += '<div class="success">✅ authManager: Available</div>';
+            } else {
+                html += '<div class="warning">❌ authManager: Not available</div>';
+            }
+            
+            result.innerHTML += html;
+        }
+
+        async function simulateDashboardAPI() {
+            const result = document.getElementById('frontendResults');
+            result.innerHTML += '<div class="info">🔄 Simulating exact dashboard API calls...</div>';
+            
+            if (!currentToken) {
+                result.innerHTML += '<div class="error">❌ No token available. Please login first.</div>';
+                return;
+            }
+            
+            try {
+                // Simulate the exact calls the dashboard should make
+                const [profileResponse, dashboardResponse] = await Promise.all([
+                    fetch(API_ENDPOINTS.userProfile, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${currentToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }),
+                    fetch(`${API_ENDPOINTS.userDashboard}?limit=20&offset=0`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${currentToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                ]);
+                
+                const profileData = await profileResponse.json();
+                const dashboardData = await dashboardResponse.json();
+                
+                logAPI(`Dashboard simulation - Profile: ${profileResponse.status}, Dashboard: ${dashboardResponse.status}`, 'info');
+                
+                result.innerHTML += `
+                    <div class="${profileResponse.ok ? 'success' : 'error'}">
+                        ✅ Profile API: ${profileResponse.status} - ${profileData.error || 'Success'}
+                    </div>
+                    <div class="${dashboardResponse.ok ? 'success' : 'error'}">
+                        ✅ Dashboard API: ${dashboardResponse.status} - ${dashboardData.error || 'Success'}
+                    </div>
+                `;
+                
+                if (profileResponse.ok && dashboardResponse.ok) {
+                    result.innerHTML += `
+                        <div class="success">
+                            🎉 <strong>All APIs working! Frontend should load dashboard.</strong><br>
+                            Profile: ${profileData.profile?.email}<br>
+                            Content items: ${dashboardData.content?.length || 0}
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                result.innerHTML += `<div class="error">Dashboard simulation error: ${error.message}</div>`;
+                logAPI(`Dashboard simulation error: ${error.message}`, 'error');
+            }
+        }
+
+        function captureConsoleErrors() {
+            const result = document.getElementById('consoleResults');
+            
+            // Override console.error to capture errors
+            const originalError = console.error;
+            const errors = [];
+            
+            console.error = function(...args) {
+                errors.push(args.join(' '));
+                originalError.apply(console, args);
+            };
+            
+            result.innerHTML = `
+                <div class="info">Console error capture enabled. Navigate to dashboard and come back.</div>
+                <button onclick="showCapturedErrors()">Show Captured Errors</button>
+                <div id="capturedErrors"></div>
+            `;
+            
+            window.capturedErrors = errors;
+            
+            setTimeout(() => {
+                if (errors.length === 0) {
+                    result.innerHTML += '<div class="success">✅ No console errors captured in the last 10 seconds</div>';
+                } else {
+                    result.innerHTML += `<div class="error">❌ ${errors.length} console errors captured</div>`;
+                }
+            }, 10000);
+        }
+
+        function showCapturedErrors() {
+            const errorDiv = document.getElementById('capturedErrors');
+            if (window.capturedErrors && window.capturedErrors.length > 0) {
+                errorDiv.innerHTML = window.capturedErrors.map(error => 
+                    `<div class="error">🔴 ${error}</div>`
+                ).join('');
+            } else {
+                errorDiv.innerHTML = '<div class="success">✅ No errors captured</div>';
+            }
+        }
+
+        function checkNetworkRequests() {
+            const result = document.getElementById('consoleResults');
+            result.innerHTML += `
+                <div class="info">
+                    🔍 <strong>Manual Check Required:</strong><br>
+                    1. Open browser DevTools (F12)<br>
+                    2. Go to Network tab<br>
+                    3. Navigate to dashboard<br>
+                    4. Look for API calls to user-profile and user-dashboard<br>
+                    5. Check if they return 200 status
+                </div>
+            `;
+        }
+
+        async function fullDashboardSimulation() {
+            const result = document.getElementById('simulationResults');
+            result.innerHTML = '<div class="info">🔄 Running full dashboard simulation...</div>';
+            
+            if (!currentToken) {
+                result.innerHTML += '<div class="error">❌ Please login first to get a token</div>';
+                return;
+            }
+            
+            try {
+                // Test the complete flow
+                logAPI('Starting full dashboard simulation', 'info');
+                
+                // 1. Test user profile
+                const profileStart = Date.now();
+                const profileResponse = await fetch(API_ENDPOINTS.userProfile, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                const profileTime = Date.now() - profileStart;
+                const profileData = await profileResponse.json();
+                
+                // 2. Test dashboard with filters
+                const dashboardStart = Date.now();
+                const dashboardResponse = await fetch(`${API_ENDPOINTS.userDashboard}?limit=20&offset=0`, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                const dashboardTime = Date.now() - dashboardStart;
+                const dashboardData = await dashboardResponse.json();
+                
+                // 3. Test content list
+                const contentStart = Date.now();
+                const contentResponse = await fetch(API_ENDPOINTS.contentList, {
+                    headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                const contentTime = Date.now() - contentStart;
+                const contentData = await contentResponse.json();
+                
+                result.innerHTML = `
+                    <div class="success">🎉 Full Dashboard Simulation Complete</div>
+                    <div class="token-display">
+                        <strong>Profile API:</strong> ${profileResponse.status} (${profileTime}ms)<br>
+                        User: ${profileData.profile?.email} | Role: ${profileData.profile?.role}<br><br>
+                        
+                        <strong>Dashboard API:</strong> ${dashboardResponse.status} (${dashboardTime}ms)<br>
+                        Content items: ${dashboardData.content?.length || 0}<br>
+                        Categories: ${dashboardData.statistics?.categories?.length || 0}<br><br>
+                        
+                        <strong>Content List API:</strong> ${contentResponse.status} (${contentTime}ms)<br>
+                        Total content: ${contentData.content?.length || 0}<br><br>
+                        
+                        <strong>🔍 If all APIs return 200, the issue is in the frontend code!</strong>
+                    </div>
+                `;
+                
+                logAPI(`Simulation complete - Profile: ${profileResponse.status}, Dashboard: ${dashboardResponse.status}, Content: ${contentResponse.status}`, 'success');
+                
+            } catch (error) {
+                result.innerHTML += `<div class="error">Simulation error: ${error.message}</div>`;
+                logAPI(`Simulation error: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

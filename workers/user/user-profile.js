@@ -20,9 +20,31 @@ export default {
         }
   
         const token = authHeader.substring(7);
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const userId = payload.userId;
-  
+
+        // Handle both JWT and simple base64 formats
+        let payload;
+        try {
+          if (token.includes('.')) {
+            // JWT format - decode middle part
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+              throw new Error('Invalid JWT format');
+            }
+            payload = JSON.parse(atob(parts[1]));
+          } else {
+            // Simple base64 format (current auth-login format)
+            payload = JSON.parse(atob(token));
+          }
+        } catch (error) {
+          return Response.json({ error: 'Invalid token format', details: error.message }, { status: 401, headers: corsHeaders });
+        }
+        
+        const userId = payload.userId || payload.user_id;
+        
+        if (!userId) {
+          return Response.json({ error: 'Invalid token payload' }, { status: 401, headers: corsHeaders });
+        }
+          
         if (request.method === 'GET') {
           // Get user profile
           const user = await env.DB.prepare(`

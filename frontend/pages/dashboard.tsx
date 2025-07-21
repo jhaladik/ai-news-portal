@@ -15,6 +15,17 @@ interface DashboardData {
   user_preferences: UserPreferences;
 }
 
+// Add this function before the component
+  const getToken = () => {
+       try {
+       return authManager.getCurrentToken();
+       } catch (error) {
+        // Fallback: read directly from localStorage
+        console.log('authManager not available, using localStorage fallback');
+        return localStorage.getItem('authToken');
+        }
+    };
+
 export default function UserDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -31,16 +42,21 @@ export default function UserDashboard() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const token = authManager.getCurrentToken();
+      console.log('🔍 Dashboard useEffect starting');
+      const token = getToken();
+      console.log('🔍 Token retrieved:', token ? 'Present' : 'Missing');
+      
       if (!token) {
+        console.log('🔍 No token, redirecting to login');
         router.push('/login');
         return;
       }
       
+      console.log('🔍 Token found, loading dashboard data');
       fetchInitialData();
     }
   }, []);
-
+  
   useEffect(() => {
     if (user) {
       fetchPersonalizedFeed();
@@ -48,33 +64,45 @@ export default function UserDashboard() {
   }, [filters, user]);
 
   const fetchInitialData = async () => {
+    console.log('🔍 Dashboard: fetchInitialData started');
     try {
-      const token = authManager.getCurrentToken();
-      if (!token) return;
-
+      const token = getToken();
+      console.log('🔍 Dashboard: token retrieved:', token ? 'Present' : 'Missing');
+      
+      if (!token) {
+        console.log('🔍 Dashboard: No token, redirecting to login');
+        return;
+      }
+  
       setLoading(true);
-
+      console.log('🔍 Dashboard: Calling APIs...');
+  
       // Fetch user profile and dashboard data
       const [userProfileData, dashboardDataResponse] = await Promise.all([
         apiClient.getUserProfile(token),
         apiClient.getUserDashboard(token, { limit: filters.limit, offset: filters.offset })
       ]);
-
+  
+      console.log('🔍 Dashboard: API responses received', {
+        profile: userProfileData,
+        dashboard: dashboardDataResponse
+      });
+  
       setUser(userProfileData.profile);
       setUserStats(userProfileData.statistics);
       setDashboardData(dashboardDataResponse);
-
+  
     } catch (error) {
-      console.error('Failed to fetch initial data:', error);
+      console.error('🔍 Dashboard: fetchInitialData error:', error);
       router.push('/login');
     } finally {
       setLoading(false);
     }
   };
-
+  
   const fetchPersonalizedFeed = async () => {
     try {
-      const token = authManager.getCurrentToken();
+      const token = getToken();
       if (!token) return;
 
       setContentLoading(true);

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Diagnostic Tool</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        .token-display {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .api-logs {
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Dashboard Loading Diagnostic Tool</h1>
+    
+    <div class="container">
+        <h2>Step 1: Token Verification</h2>
+        <div class="test-section">
+            <h3>Current Token Analysis</h3>
+            <button onclick="analyzeCurrentToken()">Analyze Current Token</button>
+            <div id="tokenAnalysis"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: API Endpoint Testing</h2>
+        <div class="test-section">
+            <h3>Test Login and Get Token</h3>
+            <input type="email" id="loginEmail" placeholder="admin@ai-news.com" value="admin@ai-news.com">
+            <input type="password" id="loginPassword" placeholder="Password" value="password123">
+            <button onclick="testLogin()">Test Login</button>
+            <div id="loginResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Dashboard Endpoints</h3>
+            <button onclick="testUserProfile()">Test User Profile API</button>
+            <button onclick="testUserDashboard()">Test User Dashboard API</button>
+            <button onclick="testAllEndpoints()">Test All Dashboard APIs</button>
+            <div id="endpointResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Environment Variables Check</h2>
+        <div class="test-section">
+            <button onclick="checkEnvironmentVariables()">Check Environment Variables</button>
+            <div id="envResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Step 4: Network Analysis</h2>
+        <div class="test-section">
+            <button onclick="runNetworkDiagnostics()">Run Network Diagnostics</button>
+            <div id="networkResults"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>API Request Logs</h2>
+        <div class="api-logs" id="apiLogs"></div>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <script>
+        // Environment configuration based on the project
+        const API_ENDPOINTS = {
+            auth: 'https://auth-login.jhaladik.workers.dev',
+            userProfile: 'https://user-profile.jhaladik.workers.dev',
+            userDashboard: 'https://user-dashboard.jhaladik.workers.dev',
+            contentList: 'https://content-list.jhaladik.workers.dev'
+        };
+
+        let currentToken = null;
+
+        function logAPI(message, type = 'info') {
+            const logs = document.getElementById('apiLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('apiLogs').innerHTML = '';
+        }
+
+        function analyzeCurrentToken() {
+            const result = document.getElementById('tokenAnalysis');
+            
+            // Try to get token from localStorage (typical auth manager storage)
+            const storedToken = localStorage.getItem('authToken') || 
+                               localStorage.getItem('token') || 
+                               sessionStorage.getItem('authToken');
+            
+            if (!storedToken) {
+                result.innerHTML = '<div class="error">❌ No token found in localStorage or sessionStorage</div>';
+                return;
+            }
+
+            try {
+                // Decode JWT token
+                const parts = storedToken.split('.');
+                if (parts.length !== 3) {
+                    throw new Error('Invalid JWT format');
+                }
+
+                const header = JSON.parse(atob(parts[0]));
+                const payload = JSON.parse(atob(parts[1]));
+                
+                const now = Date.now();
+                const isExpired = payload.exp && payload.exp < now;
+                
+                result.innerHTML = `
+                    <div class="success">✅ Token found and decoded successfully</div>
+                    <div class="token-display">
+                        <strong>Header:</strong> ${JSON.stringify(header, null, 2)}<br>
+                        <strong>Payload:</strong> ${JSON.stringify(payload, null, 2)}<br>
+                        <strong>Expires:</strong> ${payload.exp ? new Date(payload.exp).toLocaleString() : 'No expiration'}<br>
+                        <strong>Status:</strong> ${isExpired ? '🔴 EXPIRED' : '🟢 VALID'}
+                    </div>
+                `;
+                
+                currentToken = storedToken;
+                logAPI(`Token analyzed: User ID: ${payload.userId || payload.user_id}, Role: ${payload.role}, Expired: ${isExpired}`, 'info');
+                
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ Error decoding token: ${error.message}</div>`;
+                logAPI(`Token decode error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const result = document.getElementById('loginResult');
+            
+            result.innerHTML = '<div class="info">🔄 Testing login...</div>';
+            logAPI(`Attempting login with email: ${email}`, 'info');
+            
+            try {
+                const response = await fetch(API_ENDPOINTS.auth, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                logAPI(`Login response: ${response.status} - ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+                
+                if (response.ok && data.success && data.token) {
+                    currentToken = data.token;
+                    // Store token for further tests
+                    localStorage.setItem('authToken', data.token);
+                    
+                    result.innerHTML = `
+                        <div class="success">✅ Login successful!</div>
+                        <div class="token-display">
+                            <strong>Token:</strong> ${data.token}<br>
+                            <strong>User:</strong> ${JSON.stringify(data.user, null, 2)}
+                        </div>
+                    `;
+                } else {
+                    result.innerHTML = `<div class="error">❌ Login failed: ${data.error || 'Unknown error'}</div>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ Network error: ${error.message}</div>`;
+                logAPI(`Login network error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testUserProfile() {
+            if (!currentToken) {
+                alert('Please login first or analyze current token');
+                return;
+            }
+            
+            logAPI('Testing User Profile API endpoint', 'info');
+            
+            try {
+                const response = await fetch(API_ENDPOINTS.userProfile, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                logAPI(`User Profile response: ${response.status} - ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+                
+                const resultDiv = document.getElementById('endpointResults');
+                if (response.ok) {
+                    resultDiv.innerHTML += `<div class="success">✅ User Profile API working</div>`;
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ User Profile API failed: ${data.error}</div>`;
+                }
+            } catch (error) {
+                logAPI(`User Profile API error: ${error.message}`, 'error');
+                document.getElementById('endpointResults').innerHTML += `<div class="error">❌ User Profile API error: ${error.message}</div>`;
+            }
+        }
+
+        async function testUserDashboard() {
+            if (!currentToken) {
+                alert('Please login first or analyze current token');
+                return;
+            }
+            
+            logAPI('Testing User Dashboard API endpoint', 'info');
+            
+            try {
+                const response = await fetch(`${API_ENDPOINTS.userDashboard}?limit=5`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                logAPI(`User Dashboard response: ${response.status} - ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+                
+                const resultDiv = document.getElementById('endpointResults');
+                if (response.ok) {
+                    resultDiv.innerHTML += `<div class="success">✅ User Dashboard API working</div>`;
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ User Dashboard API failed: ${data.error}</div>`;
+                }
+            } catch (error) {
+                logAPI(`User Dashboard API error: ${error.message}`, 'error');
+                document.getElementById('endpointResults').innerHTML += `<div class="error">❌ User Dashboard API error: ${error.message}</div>`;
+            }
+        }
+
+        async function testAllEndpoints() {
+            document.getElementById('endpointResults').innerHTML = '<div class="info">🔄 Testing all endpoints...</div>';
+            await testUserProfile();
+            await testUserDashboard();
+        }
+
+        function checkEnvironmentVariables() {
+            const result = document.getElementById('envResults');
+            
+            const expectedEnvVars = [
+                'AUTH_LOGIN_URL',
+                'USER_PROFILE_URL', 
+                'USER_DASHBOARD_URL',
+                'CONTENT_LIST_URL'
+            ];
+            
+            let html = '<h4>Environment Variables Check:</h4>';
+            
+            // Check if we can access these from window
+            const envCheck = {
+                'AUTH_LOGIN_URL': API_ENDPOINTS.auth,
+                'USER_PROFILE_URL': API_ENDPOINTS.userProfile,
+                'USER_DASHBOARD_URL': API_ENDPOINTS.userDashboard,
+                'CONTENT_LIST_URL': API_ENDPOINTS.contentList
+            };
+            
+            for (const [key, value] of Object.entries(envCheck)) {
+                const status = value ? '✅' : '❌';
+                const color = value ? 'success' : 'error';
+                html += `<div class="${color}">${status} ${key}: ${value || 'NOT SET'}</div>`;
+            }
+            
+            result.innerHTML = html;
+            logAPI('Environment variables checked', 'info');
+        }
+
+        async function runNetworkDiagnostics() {
+            const result = document.getElementById('networkResults');
+            result.innerHTML = '<div class="info">🔄 Running network diagnostics...</div>';
+            
+            const diagnostics = [];
+            
+            // Test each endpoint with a simple GET request
+            for (const [name, url] of Object.entries(API_ENDPOINTS)) {
+                try {
+                    const start = Date.now();
+                    const response = await fetch(url, { method: 'OPTIONS' }); // Use OPTIONS to avoid CORS issues
+                    const time = Date.now() - start;
+                    
+                    diagnostics.push(`✅ ${name}: ${url} (${time}ms)`);
+                    logAPI(`Network test ${name}: ${response.status} in ${time}ms`, 'success');
+                } catch (error) {
+                    diagnostics.push(`❌ ${name}: ${url} - ${error.message}`);
+                    logAPI(`Network test ${name} failed: ${error.message}`, 'error');
+                }
+            }
+            
+            result.innerHTML = diagnostics.map(d => `<div class="${d.startsWith('✅') ? 'success' : 'error'}">${d}</div>`).join('');
+        }
+
+        // Initialize
+        window.onload = function() {
+            logAPI('Dashboard Diagnostic Tool initialized', 'info');
+            checkEnvironmentVariables();
+        };
+    </script>
+</body>
+</html>
