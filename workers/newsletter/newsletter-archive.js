@@ -21,7 +21,7 @@ export default {
   
         const token = authHeader.substring(7);
         const payload = JSON.parse(atob(token.split('.')[1]));
-        const userId = payload.user_id;
+        const userId = payload.userId;
   
         if (request.method === 'GET') {
           // Get newsletter archive for user

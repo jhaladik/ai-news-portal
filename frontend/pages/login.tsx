@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/layout/Layout';
-import { AuthManager } from '../lib/auth';
+import { authManager } from '../lib/auth';
 import apiClient from '../lib/api-client';
 
 export default function LoginPage() {
@@ -15,8 +15,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
-
-  const authManager = new AuthManager();
 
   useEffect(() => {
     // Redirect if already logged in
@@ -50,7 +48,7 @@ export default function LoginPage() {
         password: formData.password
       });
       
-      if (result.token && result.user) {
+      if (result.success && result.token && result.user) {
         // Store in auth manager
         authManager.login(result.token, result.user);
         
@@ -64,8 +62,9 @@ export default function LoginPage() {
         setError('Login failed. Please try again.');
       }
     } catch (error) {
-      setError('Network error. Please check your connection and try again.');
-    } finally {
+        console.error('Login error:', error);
+        setError('Login failed. Please check your credentials and try again.');
+      } finally {
       setLoading(false);
     }
   };

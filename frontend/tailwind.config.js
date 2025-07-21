@@ -43,7 +43,7 @@ module.exports = {
     },
   },
   plugins: [
-    // Add line-clamp utility for text truncation
-    require('@tailwindcss/line-clamp'),
+    // Line-clamp utilities are now built into Tailwind CSS v3.3+
+    // No need for @tailwindcss/line-clamp plugin anymore
   ],
 }

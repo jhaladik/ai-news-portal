@@ -74,7 +74,7 @@ export default {
                 const response = await fetch(pipelineUrl, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ manual_trigger: true, triggered_by: payload.user_id })
+                  body: JSON.stringify({ manual_trigger: true, triggered_by: payload.userId })
                 });
   
                 if (!response.ok) {
@@ -82,7 +82,7 @@ export default {
                 }
   
                 await env.KV.put('pipeline-manual-trigger', JSON.stringify({
-                  triggered_by: payload.user_id,
+                  triggered_by: payload.userId,
                   timestamp: Date.now()
                 }));
   

@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Layout from '../components/layout/Layout';
 import ContentCard from '../components/content/ContentCard';
 import ContentFilters from '../components/content/ContentFilters';
-import { AuthManager } from '../lib/auth';
+import { authManager } from '../lib/auth';
 import apiClient from '../lib/api-client';
 import { Content, UserProfile, UserEngagementStats, UserPreferences, UserStats, Activity, Neighborhood } from '../lib/types';
 
@@ -28,8 +28,6 @@ export default function UserDashboard() {
     limit: 20,
     offset: 0
   });
-
-  const authManager = new AuthManager();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
